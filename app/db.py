@@ -24,7 +24,15 @@ def _open() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    # busy_timeout is essential: in WAL mode a COMMIT that finds the write lock
+    # held fails with SQLITE_BUSY *without* honoring busy_timeout on some paths,
+    # and python's legacy isolation_level opens implicit transactions, so a
+    # long-running write elsewhere would otherwise surface as 'database is locked'.
     conn.execute("PRAGMA busy_timeout=30000")
+    # Autocommit mode: each statement is its own transaction, so a connection
+    # never sits inside an open write transaction between calls (which is what
+    # made other threads fail with SQLITE_BUSY at COMMIT time).
+    conn.isolation_level = None
     return conn
 
 
@@ -100,8 +108,15 @@ def query_one(sql: str, params: tuple = ()) -> sqlite3.Row | None:
     return get_conn().execute(sql, params).fetchone()
 
 
+_write_lock = threading.Lock()
+
+
 def execute(sql: str, params: tuple = ()) -> sqlite3.Cursor:
-    conn = get_conn()
-    cur = conn.execute(sql, params)
-    conn.commit()
-    return cur
+    # Serialize writers process-wide: with per-thread connections, SQLite's
+    # cross-connection lock only helps so far; a short in-process write lock
+    # keeps every statement atomic and avoids SQLITE_BUSY under bursts.
+    with _write_lock:
+        conn = get_conn()
+        cur = conn.execute(sql, params)
+        conn.commit()
+        return cur

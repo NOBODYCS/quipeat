@@ -171,16 +171,23 @@ def page(request: Request, template: str, **ctx) -> HTMLResponse:
     if user:
         from .fsrs import level_progress
         lvl, into, need = level_progress(user["xp_total"])
-        rev = db.query_one("SELECT COUNT(*) c, COALESCE(SUM(correct),0) ok FROM reviews WHERE user_id = ?", (user["id"],))
-        badges = db.query("SELECT badge FROM user_badges WHERE user_id = ? ORDER BY awarded_at DESC LIMIT 5", (user["id"],))
+        # one query for review stats + badge window + badge total
+        stats = db.query_one(
+            "SELECT (SELECT COUNT(*) FROM reviews WHERE user_id = :u) AS rev_c,"
+            "       (SELECT COALESCE(SUM(correct),0) FROM reviews WHERE user_id = :u) AS rev_ok,"
+            "       (SELECT COUNT(*) FROM user_badges WHERE user_id = :u) AS badge_total",
+            {"u": user["id"]})
+        badges = db.query(
+            "SELECT badge FROM user_badges WHERE user_id = ? ORDER BY awarded_at DESC LIMIT 5",
+            (user["id"],))
+        rev_c, rev_ok = stats["rev_c"], stats["rev_ok"]
         ctx.setdefault("sidebar", {
             "level": lvl, "xp_into": into, "xp_need": need,
             "pct": min(100, round(100 * into / need)) if need else 100,
             "streak": user["streak_days"],
-            "reviews": rev["c"],
-            "accuracy": round(100 * rev["ok"] / rev["c"], 1) if rev["c"] else None,
-            "badges": badges, "badge_total": db.query_one(
-                "SELECT COUNT(*) c FROM user_badges WHERE user_id = ?", (user["id"],))["c"],
+            "reviews": rev_c,
+            "accuracy": round(100 * rev_ok / rev_c, 1) if rev_c else None,
+            "badges": badges, "badge_total": stats["badge_total"],
         })
     return templates.TemplateResponse(request, template, ctx)
 

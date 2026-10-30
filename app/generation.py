@@ -46,11 +46,12 @@ class _JobEventStore(logging.Handler):
             return
         rows, self.buffer = self.buffer, []
         try:
-            conn = db.get_conn()
-            conn.executemany(
-                "INSERT INTO job_events(job_id, level, message) VALUES (?, ?, ?)",
-                [(self.job_id, lvl, msg) for lvl, msg in rows])
-            conn.commit()
+            with db._write_lock:
+                conn = db.get_conn()
+                conn.executemany(
+                    "INSERT INTO job_events(job_id, level, message) VALUES (?, ?, ?)",
+                    [(self.job_id, lvl, msg) for lvl, msg in rows])
+                conn.commit()
         except Exception:
             pass
 
