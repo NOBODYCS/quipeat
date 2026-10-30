@@ -2,7 +2,9 @@ LANGS = ("en", "pl")
 
 STRINGS = {
     "en": {
-        "nav_decks": "Decks", "nav_new": "New deck", "nav_study": "Study", "nav_stats": "Stats", "nav_admin": "Admin",
+        "nav_decks": "Decks", "nav_new": "New deck", "nav_study": "Study", "nav_stats": "Stats",
+        "nav_profile": "Profile", "combo": "combo", "biggest_combo": "BIGGEST COMBO", "mastery": "mastery", "deck_level_new": "New", "deck_level_silver": "Silver", "deck_level_so_so": "So-so", "deck_level_adept": "Adept", "deck_level_expert": "Expert", "deck_level_elite": "Elite", "earned_on": "Earned on", "badge_first_deck_mastered": "First deck mastered", "badge_perfect_session": "Perfect session", "badge_century_mastered": "Century", "badge_desc_first_deck_mastered": "Get any deck to 100% mastery.", "badge_desc_perfect_session": "Answer at least 10 questions in one session, all correct.", "badge_desc_century_mastered": "Master 100 questions in total across all decks.",
+ "nav_admin": "Admin",
         "nav_settings": "Settings", "nav_logout": "Log out", "replay_tutorial": "Replay the intro tutorial",
         "decks_title": "Your decks", "new_deck": "＋ New deck", "empty_decks": "No decks yet. Upload a document, paste a link, or type a topic to generate your first quiz deck.",
         "create_one": "Create one now", "questions_n": "questions", "due_n": "due", "status": "status",
@@ -97,7 +99,9 @@ STRINGS = {
 
     },
     "pl": {
-        "nav_decks": "Talie", "nav_new": "Nowa talia", "nav_study": "Nauka", "nav_stats": "Statystyki", "nav_admin": "Admin",
+        "nav_decks": "Talie", "nav_new": "Nowa talia", "nav_study": "Nauka", "nav_stats": "Statystyki",
+        "nav_profile": "Profil", "combo": "combo", "biggest_combo": "NAJWIĘKSZE COMBO", "mastery": "opanowanie", "deck_level_new": "Nowa", "deck_level_silver": "Srebrna", "deck_level_so_so": "Taka sobie", "deck_level_adept": "Biegła", "deck_level_expert": "Ekspert", "deck_level_elite": "Elita", "earned_on": "Zdobyto", "badge_first_deck_mastered": "Pierwsza opanowana talia", "badge_perfect_session": "Perfekcyjna sesja", "badge_century_mastered": "Setka", "badge_desc_first_deck_mastered": "Doprowadź dowolną talię do 100% opanowania.", "badge_desc_perfect_session": "Odpowiedz w jednej sesji na min. 10 pytań, wszystkie poprawnie.", "badge_desc_century_mastered": "Opanuj łącznie 100 pytań we wszystkich taliach.",
+ "nav_admin": "Admin",
         "nav_settings": "Ustawienia", "nav_logout": "Wyloguj", "replay_tutorial": "Powtórz samouczek",
         "decks_title": "Twoje talie", "new_deck": "＋ Nowa talia", "empty_decks": "Brak talii. Dodaj dokument, link lub wpisz temat, aby wygenerować pierwszy zestaw pytań.",
         "create_one": "Utwórz teraz", "questions_n": "pytań", "due_n": "do powtórki", "status": "status",

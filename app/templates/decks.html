@@ -36,6 +36,7 @@
       {% elif d.status == 'draft' %}<span class="chip chip-flame">{{ t("status_draft") }}</span>
       {% else %}<span class="chip chip-flame pulse-soft">{{ t("status_generating") }}</span>{% endif %}
       <span class="chip">{{ d.q_count }} {{ t("questions_n") }}</span>
+      <span class="chip chip-volt" title="{{ d.mastery_pct }}% {{ t("mastery") }}">{{ t("deck_level_" ~ d.deck_level) }} · {{ d.mastery_pct }}%</span>
     </div>
     {% if d.status == 'ready' %}
     <a href="/study/{{ d.id }}" class="btn-primary btn-sm w-full">{{ t("nav_study") }}{% if d.due_count %} · {{ d.due_count }} {{ t("due_n") }}{% endif %}</a>

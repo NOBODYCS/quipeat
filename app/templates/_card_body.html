@@ -3,6 +3,9 @@
   <div class="mb-3 flex items-center gap-2 text-sm font-semibold">
     <span class="chip {{ 'chip-mint' if last_correct else 'chip-red' }}">{{ (t("correct") ~ " ✓") if last_correct else t("not_quite") }}</span>
     <span class="text-volt-300 font-bold">+{{ last_xp }} XP</span>
+    {% if combo is defined and combo and combo >= 2 %}
+    <span class="chip chip-flame" id="combo-chip">🔥 {{ t("combo") }} ×{{ combo }}</span>
+    {% endif %}
   </div>
   {% endif %}
   {% if award and award.leveled_up %}<div class="toast" role="status">🎉 {{ t("toast_level_up") }} {{ award.level }}!</div>{% endif %}

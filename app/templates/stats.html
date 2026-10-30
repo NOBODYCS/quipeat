@@ -5,7 +5,7 @@
 <div class="grid gap-4 grid-cols-2 lg:grid-cols-4 mb-8">
   <div class="card p-4"><div class="text-2xl font-semibold text-transparent bg-clip-text" style="background-image:linear-gradient(135deg,#d9f96e,#c8f04a)">{{ user.level }}</div><div class="text-xs text-mist-400">{{ t("level") }}</div></div>
   <div class="card p-4"><div class="text-2xl font-semibold text-white">{{ user.xp_total }}</div><div class="text-xs text-mist-400">{{ t("total_xp") }}</div></div>
-  <div class="card p-4"><div class="text-2xl font-semibold text-flame-300">{{ user.streak_days }} <svg class="inline h-5 w-5 text-flame-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4-3 5-3 8a3 3 0 0 0 6 .5C15 8 18 8 18 13a6 6 0 0 1-12 0c0-4 5-6 6-11z"/></svg></div><div class="text-xs text-mist-400">{{ t("streak") }}</div></div>
+  {% if not user.hide_streaks %}<div class="card p-4"><div class="text-2xl font-semibold text-flame-300">{{ user.streak_days }} <svg class="inline h-5 w-5 text-flame-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4-3 5-3 8a3 3 0 0 0 6 .5C15 8 18 8 18 13a6 6 0 0 1-12 0c0-4 5-6 6-11z"/></svg></div><div class="text-xs text-mist-400">{{ t("streak") }}</div></div>{% endif %}
   <div class="card p-4"><div class="text-2xl font-semibold text-mint-300">{{ accuracy }}%</div><div class="text-xs text-mist-400">{{ t("accuracy") }} ({{ total_r }} {{ t("reviews") }}, {{ total_q }} {{ t("cards") }})</div></div>
 </div>
 <h2 class="text-lg font-semibold mb-3">{{ t("badges") }}</h2>

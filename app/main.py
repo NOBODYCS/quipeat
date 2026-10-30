@@ -346,7 +346,15 @@ async def decks(request: Request, created: int | None = None):
         " (SELECT COUNT(*) FROM questions q WHERE q.deck_id = d.id AND q.due_at <= datetime('now') AND q.flagged = 0) AS due_count"
         " FROM decks d JOIN sources s ON s.id = d.source_id WHERE d.user_id = ? ORDER BY d.created_at DESC",
         (user["id"],))
-    return page(request, "decks.html", decks=rows, created=created)
+    from .mastery import deck_mastery, deck_level
+    enriched = []
+    for d in rows:
+        m = deck_mastery(user["id"], d["id"])
+        d = dict(d)
+        d["mastery_pct"] = m["pct"]
+        d["deck_level"] = deck_level(m["pct"])
+        enriched.append(d)
+    return page(request, "decks.html", decks=enriched, created=created)
 
 
 @app.get("/new", response_class=HTMLResponse)
@@ -505,6 +513,27 @@ async def study_pick(request: Request):
     return page(request, "study_pick.html", decks=decks)
 
 
+def _current_session(user: dict, deck_id: int):
+    """The open study_sessions row for this user+deck, or None. A session is
+    closed after 30 minutes of inactivity (checked on page load)."""
+    sess = db.query_one(
+        "SELECT * FROM study_sessions WHERE user_id = ? AND deck_id = ? AND ended_at IS NULL"
+        " ORDER BY started_at DESC LIMIT 1", (user["id"], deck_id))
+    if sess and sess["started_at"]:
+        from datetime import datetime, timedelta
+        # close on 30 min of inactivity: use the latest attempt in the session
+        last_att = db.query_one(
+            "SELECT MAX(answered_at) a FROM attempts WHERE user_id = ? AND session_id = ?",
+            (user["id"], sess["id"]))["a"]
+        ref = last_att or sess["started_at"]
+        ref_dt = datetime.fromisoformat(ref.replace("Z", "+00:00")) if "T" in ref \
+            else datetime.strptime(ref, "%Y-%m-%d %H:%M:%S")
+        if datetime.now(timezone.utc).replace(tzinfo=None) - ref_dt.replace(tzinfo=None) > timedelta(minutes=30):
+            db.execute("UPDATE study_sessions SET ended_at = datetime('now') WHERE id = ?", (sess["id"],))
+            return None
+    return sess
+
+
 @app.get("/study/{deck_id}", response_class=HTMLResponse)
 async def study_session(request: Request, deck_id: int):
     user = require_user(request)
@@ -515,16 +544,35 @@ async def study_session(request: Request, deck_id: int):
     due = db.query_one(
         "SELECT COUNT(*) c, MIN(due_at) next_due FROM questions WHERE deck_id = ? AND due_at > ?",
         (deck_id, now))
-    q = db.query_one(
-        "SELECT * FROM questions WHERE deck_id = ? AND due_at <= ? AND flagged = 0 ORDER BY due_at LIMIT 1",
-        (deck_id, now))
-    if not q:
+    sess = _current_session(user, deck_id)
+    queue = _session_queue(user, deck_id, sess)
+    if not queue:
         return page(request, "study_done.html", deck=deck, next_due=due["next_due"])
-    due_count = db.query_one(
-        "SELECT COUNT(*) c FROM questions WHERE deck_id = ? AND due_at <= ? AND flagged = 0", (deck_id, now))["c"]
+    q = queue[0]
+    due_count = len(queue)
+    combo = sess["combo"] if sess else 0
     return page(request, "study_card.html", deck=deck,
                 q={**dict(q), "options": json.loads(q["options_json"])},
-                due_count=due_count, est_min=max(1, round(due_count * 0.4)))
+                due_count=due_count, est_min=max(1, round(due_count * 0.4)),
+                combo=combo)
+
+
+def _session_queue(user: dict, deck_id: int, sess) -> list:
+    """Due, unflagged questions ordered least-mastered first (box asc), ties by
+    longest time since last answered. Questions answered wrong in this session
+    are excluded (they return in later sessions via their lowered box)."""
+    wrong_ids = set()
+    if sess and sess["wrong_ids"]:
+        wrong_ids = {int(x) for x in sess["wrong_ids"].split(",") if x}
+    rows = db.query(
+        "SELECT q.*, COALESCE(m.box_level, 0) AS box, m.last_answered_at AS last_answered"
+        " FROM questions q LEFT JOIN mastery m ON m.question_id = q.id AND m.user_id = ?"
+        " WHERE q.deck_id = ? AND q.due_at <= ? AND q.flagged = 0"
+        " ORDER BY box ASC, last_answered ASC, q.id ASC",
+        (user["id"], deck_id, db.now_utc()))
+    return [r for r in rows if r["id"] not in wrong_ids]
+
+
 
 
 @app.post("/study/{deck_id}/answer")
@@ -576,33 +624,49 @@ def _finish_card(request, user, deck_id, q, choice, is_correct, rating=None):
     award = gamify.award_xp(user["id"], xp)
     activity = gamify.touch_activity(user["id"])
     badges = gamify.check_badges(user["id"], total)
-    sess = db.query_one(
-        "SELECT * FROM study_sessions WHERE user_id = ? AND deck_id = ? AND ended_at IS NULL"
-        " ORDER BY started_at DESC LIMIT 1", (user["id"], deck_id))
+    sess = _current_session(user, deck_id)
     if not sess:
         cur = db.execute("INSERT INTO study_sessions(user_id, deck_id) VALUES (?, ?)",
                          (user["id"], deck_id))
         sess_id = cur.lastrowid
     else:
         sess_id = sess["id"]
-    db.execute("UPDATE study_sessions SET cards_reviewed = cards_reviewed + 1, xp_earned = xp_earned + ? WHERE id = ?",
-               (xp, sess_id))
-    nxt = db.query_one(
-        "SELECT * FROM questions WHERE deck_id = ? AND due_at <= ? AND flagged = 0 AND id != ? ORDER BY due_at LIMIT 1",
-        (deck_id, db.now_utc(), q["id"]))
+    # mastery: log exactly one attempt, move the box, update combo
+    from . import mastery as _mastery
+    _mastery.record_attempt(user["id"], q["id"], deck_id, bool(correct), 0, sess_id)
+    combo = (sess["combo"] if sess else 0) + (1 if correct else 0)
+    if not correct:
+        combo = 0
+        wrong = (sess["wrong_ids"] if sess else "") if sess else ""
+        wrong = (wrong + "," if wrong else "") + str(q["id"])
+        db.execute("UPDATE study_sessions SET wrong_ids = ? WHERE id = ?", (wrong, sess_id))
+    best_combo = max(sess["best_combo"] if sess else 0, combo)
+    if combo > (db.query_one("SELECT biggest_combo c FROM users WHERE id = ?", (user["id"],))["c"] or 0):
+        db.execute("UPDATE users SET biggest_combo = ? WHERE id = ?", (combo, user["id"]))
+    db.execute(
+        "UPDATE study_sessions SET cards_reviewed = cards_reviewed + 1, xp_earned = xp_earned + ?,"
+        " combo = ?, best_combo = ? WHERE id = ?",
+        (xp, combo, best_combo, sess_id))
+    streak_info = _mastery.touch_streak(user["id"])
+    new_badges = _mastery.award_badges(user["id"], deck_id=deck_id)
+    queue = _session_queue(user, deck_id, db.query_one("SELECT * FROM study_sessions WHERE id = ?", (sess_id,)))
+    nxt = queue[0] if queue else None
     if nxt:
         deck = db.query_one("SELECT * FROM decks WHERE id = ?", (deck_id,))
         now = db.now_utc()
-        due_count = db.query_one(
-            "SELECT COUNT(*) c FROM questions WHERE deck_id = ? AND due_at <= ? AND flagged = 0", (deck_id, now))["c"]
+        due_count = len(queue)
         return page(request, "_card_body.html", deck=deck,
                     q={**dict(nxt), "options": json.loads(nxt["options_json"])},
                     due_count=due_count, est_min=max(1, round(due_count * 0.4)),
-                    last_correct=bool(correct), last_xp=xp,
-                    award=award, activity=activity, badges=badges)
+                    last_correct=bool(correct), last_xp=xp, combo=combo,
+                    award=award, activity=activity, badges=badges + new_badges)
     sess_row = db.query_one("SELECT * FROM study_sessions WHERE id = ?", (sess_id,))
     db.execute("UPDATE study_sessions SET ended_at = datetime('now') WHERE id = ?", (sess_id,))
     acc = db.query_one("SELECT ROUND(100.0*SUM(correct)/COUNT(*),1) a FROM reviews WHERE user_id=? AND id IN (SELECT id FROM reviews WHERE reviewed_at >= ?)", (user["id"], sess_row["started_at"]))
+    perfect = sess_row["cards_reviewed"] >= 10 and sess_row["combo"] == sess_row["cards_reviewed"]
+    new_badges += _mastery.award_badges(user["id"], deck_id=deck_id,
+                                        session={"cards_reviewed": sess_row["cards_reviewed"],
+                                                 "combo": sess_row["combo"]})
     deck = db.query_one("SELECT * FROM decks WHERE id = ?", (deck_id,))
     next_due = db.query_one("SELECT MIN(due_at) d FROM questions WHERE deck_id = ? AND due_at > ?",
                             (deck_id, db.now_utc()))["d"]
@@ -612,8 +676,9 @@ def _finish_card(request, user, deck_id, q, choice, is_correct, rating=None):
         return resp
     return page(request, "study_summary.html", deck=deck, correct=correct, xp=xp,
                 cards=sess_row["cards_reviewed"], xp_total=sess_row["xp_earned"],
-                accuracy=acc["a"] or 0, award=award, activity=activity, badges=badges,
-                next_due=next_due)
+                accuracy=acc["a"] or 0, award=award, activity=activity, badges=badges + new_badges,
+                next_due=next_due, combo=combo, best_combo=sess_row["best_combo"],
+                streak=streak_info["streak"])
 
 
 @app.get("/study/{deck_id}/done", response_class=HTMLResponse)
@@ -791,6 +856,19 @@ async def stats(request: Request):
         " GROUP BY d ORDER BY d DESC LIMIT 14", (user["id"],))
     return page(request, "stats.html", total_q=total_q, total_r=total_r, accuracy=acc or 0,
                 badges=badges, recent=recent, all_badges=list(gamify.BADGES))
+
+
+@app.get("/profile", response_class=HTMLResponse)
+async def profile_page(request: Request):
+    """Profile: stats summary, biggest combo, streak, and the full badge list
+    (earned with dates, locked grayed out with how-to-earn)."""
+    user = require_user(request)
+    from . import mastery as _mastery
+    badges = db.query("SELECT * FROM user_badges WHERE user_id = ? ORDER BY awarded_at", (user["id"],))
+    biggest_combo = user["biggest_combo"] if "biggest_combo" in user.keys() else 0
+    return page(request, "profile.html",
+                badges=badges, all_badges=list(_mastery.BADGES), biggest_combo=biggest_combo,
+                streak=user["streak_days"])
 
 
 # ---------- admin ----------

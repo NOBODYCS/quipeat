@@ -67,6 +67,41 @@ def init_db() -> None:
             conn.execute("ALTER TABLE questions ADD COLUMN edited INTEGER NOT NULL DEFAULT 0")
         if "verify_notes" not in qcols:
             conn.execute("ALTER TABLE questions ADD COLUMN verify_notes TEXT")
+        # Mastery tracking (gamification layer): per-user-per-question box
+        # level lives in the mastery table below, keyed (user_id, question_id).
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS mastery ("
+            " user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+            " question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,"
+            " box_level INTEGER NOT NULL DEFAULT 0,"
+            " last_answered_at TEXT,"
+            " PRIMARY KEY (user_id, question_id))")
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS attempts ("
+            " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            " user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+            " question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,"
+            " deck_id INTEGER NOT NULL,"
+            " correct INTEGER NOT NULL,"
+            " time_ms INTEGER NOT NULL DEFAULT 0,"
+            " session_id INTEGER,"
+            " answered_at TEXT NOT NULL DEFAULT (datetime('now')))")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_attempts_user ON attempts(user_id, answered_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_mastery_user ON mastery(user_id)")
+        ucols2 = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if "streak_repair_used_at" not in ucols2:
+            conn.execute("ALTER TABLE users ADD COLUMN streak_repair_used_at TEXT")
+        if "last_streak_day" not in ucols2:
+            conn.execute("ALTER TABLE users ADD COLUMN last_streak_day TEXT")
+        if "biggest_combo" not in ucols2:
+            conn.execute("ALTER TABLE users ADD COLUMN biggest_combo INTEGER NOT NULL DEFAULT 0")
+        scols = {r["name"] for r in conn.execute("PRAGMA table_info(study_sessions)").fetchall()}
+        if "combo" not in scols:
+            conn.execute("ALTER TABLE study_sessions ADD COLUMN combo INTEGER NOT NULL DEFAULT 0")
+        if "best_combo" not in scols:
+            conn.execute("ALTER TABLE study_sessions ADD COLUMN best_combo INTEGER NOT NULL DEFAULT 0")
+        if "wrong_ids" not in scols:
+            conn.execute("ALTER TABLE study_sessions ADD COLUMN wrong_ids TEXT NOT NULL DEFAULT ''")
         jcols = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()}
         if "mode" not in jcols:
             conn.execute("ALTER TABLE jobs ADD COLUMN mode TEXT NOT NULL DEFAULT 'replace'")

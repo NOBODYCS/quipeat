@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ t("nav_profile") }} · Quipeat{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-extrabold mb-6">{{ t("nav_profile") }}</h1>
+<div class="grid gap-4 grid-cols-2 lg:grid-cols-3 mb-8">
+  <div class="card p-4"><div class="text-2xl font-semibold text-flame-300">{{ streak }} 🔥</div><div class="text-xs text-mist-400">{{ t("streak") }}</div></div>
+  <div class="card p-4"><div class="text-2xl font-semibold text-volt-300">×{{ biggest_combo }}</div><div class="text-xs text-mist-400">{{ t("biggest_combo") }}</div></div>
+  <div class="card p-4"><div class="text-2xl font-semibold text-white">{{ badges | length }}/{{ all_badges | length }}</div><div class="text-xs text-mist-400">{{ t("badges") }}</div></div>
+</div>
+<h2 class="text-lg font-extrabold mb-3">{{ t("badges") }}</h2>
+<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+  {% for name in all_badges %}
+  {% set earned = badges | selectattr('badge', 'equalto', name) | list %}
+  <div class="card p-4 {% if not earned %}opacity-60{% endif %}">
+    <div class="flex items-center gap-2">
+      <span class="text-xl">{% if earned %}🏆{% else %}🔒{% endif %}</span>
+      <span class="font-bold {% if earned %}text-volt-200{% else %}text-mist-400{% endif %}">{{ t("badge_" ~ name) }}</span>
+    </div>
+    <p class="text-xs text-mist-500 mt-1">{{ t("badge_desc_" ~ name) }}</p>
+    {% if earned %}<p class="text-[10px] text-mist-600 mt-1">{{ t("earned_on") }} {{ earned[0].awarded_at[:10] }}</p>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
