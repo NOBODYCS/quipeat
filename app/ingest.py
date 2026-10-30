@@ -1,3 +1,5 @@
+import asyncio
+import importlib.util
 import re
 from collections import deque
 from pathlib import Path
@@ -8,6 +10,8 @@ from pypdf import PdfReader
 from docx import Document as DocxDocument
 
 from .config import settings
+
+_CRAWL4AI_AVAILABLE = importlib.util.find_spec("crawl4ai") is not None
 
 CHUNK_TOKENS = 450
 OVERLAP_TOKENS = 60
@@ -86,12 +90,67 @@ def _extract_links(html: str, base_url: str, host: str) -> list[str]:
     return links
 
 
-def extract_text_from_url(url: str, max_pages: int = 1) -> str:
-    """Fetch a URL and extract its text. With max_pages > 1, crawl same-domain
-    pages breadth-first up to the budget and concatenate their texts.
+def _crawl4ai_extract(url: str, max_pages: int) -> str:
+    """Playwright-backed extraction via Crawl4AI: renders JS (gets past
+    client-side challenge walls), emits boilerplate-free Markdown with
+    headings/tables/code preserved, and deep-crawls same-domain pages."""
+    from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
+    from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
+    from crawl4ai.content_filter_strategy import PruningContentFilter
+    from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
-    Raises IngestError with a specific key when the page is blocked or empty,
-    so the UI can show a clear message instead of building a garbage deck."""
+    browser_cfg = BrowserConfig(headless=True, text_mode=True)
+    run_cfg = CrawlerRunConfig(
+        cache_mode="BYPASS",
+        page_timeout=60000,
+        excluded_tags=["nav", "footer", "header", "aside"],
+        markdown_generator=DefaultMarkdownGenerator(
+            content_filter=PruningContentFilter(
+                threshold=0.48, threshold_type="fixed", min_ignore_threshold=0)),
+        deep_crawl_strategy=BFSDeepCrawlStrategy(
+            max_depth=2, include_external=False, max_pages=max_pages),
+        stream=False,
+    )
+
+    async def _run() -> list[str]:
+        texts = []
+        async with AsyncWebCrawler(config=browser_cfg) as crawler:
+            results = await crawler.arun(url, config=run_cfg)
+            if not isinstance(results, list):
+                results = [results]
+            for r in results:
+                if not r.success:
+                    continue
+                md = getattr(r, "markdown", None)
+                raw_text = getattr(md, "raw_markdown", None) or (md if isinstance(md, str) else "") or ""
+                if _looks_like_challenge(r.html or ""):
+                    raise IngestError("__err_challenge")
+                if len(raw_text.strip()) >= 200:
+                    texts.append(raw_text.strip())
+        return texts
+
+    texts = asyncio.run(_run())
+    if not texts:
+        raise IngestError("__err_extract")
+    return "\n\n".join(texts)
+
+
+def extract_text_from_url(url: str, max_pages: int = 1) -> str:
+    """Fetch a URL and extract its text. Prefers Crawl4AI (JS rendering +
+    clean Markdown + deep crawl); falls back to the httpx+trafilatura path
+    when the package isn't installed. Raises IngestError with a specific key
+    on blocked/empty pages so the UI shows a clear message."""
+    if _CRAWL4AI_AVAILABLE:
+        try:
+            return _crawl4ai_extract(url, max_pages)
+        except IngestError:
+            raise
+        except Exception:
+            pass
+    return _plain_extract_text_from_url(url, max_pages)
+
+
+def _plain_extract_text_from_url(url: str, max_pages: int = 1) -> str:
     try:
         host = urlsplit(url).netloc
         first_html = _fetch(url)

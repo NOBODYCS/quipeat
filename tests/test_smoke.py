@@ -15,7 +15,11 @@ os.environ["UPLOAD_DIR"] = str(Path(_tmp) / "uploads")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
-from app import db  # noqa: E402
+from app import db, ingest  # noqa: E402
+
+# Keep tests hermetic: never launch a real browser via Crawl4AI.
+# Tests that exercise the Crawl4AI path monkeypatch it explicitly.
+ingest._CRAWL4AI_AVAILABLE = False
 
 db.init_db()
 client = TestClient(app)
@@ -214,3 +218,55 @@ def test_url_source_challenge_fails_job(monkeypatch):
     assert "blocks automated readers" in job["error"]
     deck = db.query_one("SELECT status FROM decks WHERE id = ?", (deck_id,))
     assert deck["status"] == "failed"
+
+
+def test_url_extraction_prefers_crawl4ai(monkeypatch):
+    from app import ingest
+
+    calls = []
+
+    def fake_c4a(url, max_pages):
+        calls.append((url, max_pages))
+        return "## Rendered markdown heading\n\n" + "Playwright-rendered content. " * 30
+
+    monkeypatch.setattr(ingest, "_CRAWL4AI_AVAILABLE", True)
+    monkeypatch.setattr(ingest, "_crawl4ai_extract", fake_c4a)
+
+    text = ingest.extract_text_from_url("https://example.com/docs/", max_pages=8)
+    assert "Playwright-rendered content" in text
+    assert calls == [("https://example.com/docs/", 8)]
+
+
+def test_url_extraction_falls_back_on_crawl4ai_error(monkeypatch):
+    from app import ingest
+
+    def broken_c4a(url, max_pages):
+        raise RuntimeError("browser missing")
+
+    monkeypatch.setattr(ingest, "_CRAWL4AI_AVAILABLE", True)
+    monkeypatch.setattr(ingest, "_crawl4ai_extract", broken_c4a)
+
+    page = "<html><body>" + ("Fallback trafilatura content. " * 50) + "</body></html>"
+
+    def fake_fetch(url):
+        return page
+
+    monkeypatch.setattr(ingest, "_fetch", fake_fetch)
+    text = ingest.extract_text_from_url("https://example.com/")
+    assert "Fallback trafilatura content" in text
+
+
+def test_url_extraction_crawl4ai_challenge_raises(monkeypatch):
+    from app import ingest
+
+    def challenge_c4a(url, max_pages):
+        raise ingest.IngestError("__err_challenge")
+
+    monkeypatch.setattr(ingest, "_CRAWL4AI_AVAILABLE", True)
+    monkeypatch.setattr(ingest, "_crawl4ai_extract", challenge_c4a)
+
+    try:
+        ingest.extract_text_from_url("https://example.com/")
+        raise AssertionError("expected IngestError")
+    except ingest.IngestError as e:
+        assert str(e) == "__err_challenge"
