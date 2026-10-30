@@ -695,6 +695,15 @@ def test_restart_recovery_and_bounded_concurrency():
     db.execute("UPDATE jobs SET status='running' WHERE deck_id = ?", (deck_id,))
     db.execute("UPDATE decks SET status='draft' WHERE id = ?", (deck_id,))
 
+    # the /new job may still be running in a worker thread; wait for it to settle
+    import time
+    for _ in range(60):
+        live = db.query_one("SELECT status FROM jobs WHERE deck_id = ? ORDER BY rowid DESC LIMIT 1",
+                            (deck_id,))
+        if live["status"] in ("done", "failed"):
+            break
+        time.sleep(0.2)
+    db.execute("UPDATE jobs SET status='running' WHERE deck_id = ?", (deck_id,))
     recover_stuck_jobs()
     job = db.query_one("SELECT * FROM jobs WHERE deck_id = ? ORDER BY rowid DESC LIMIT 1",
                        (deck_id,))
