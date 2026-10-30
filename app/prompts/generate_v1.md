@@ -26,6 +26,12 @@ Each question must be:
   "according to the text/source/documentation".
 - CONCRETE: it must have one clearly best answer a practitioner would recognize.
 
+The 4 options must be:
+- SHORT: at most ~10 words each — a phrase, name, or short clause; NEVER full sentences
+  or paragraph-length explanations.
+- similar in length and grammar so the correct one isn't identifiable by size.
+- concrete values (names, commands, behaviors), not vague descriptions.
+
 # Learning-goal relevance
 The user message opens with a LEARNING GOAL line: what the user personally wants to
 master, with this text as one excerpt from their chosen source of truth. It is the

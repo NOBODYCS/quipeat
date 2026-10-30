@@ -12,6 +12,8 @@ every question whether it is sound.
   licensing, site navigation). Fail questions about the latter even if supported.
 - well-formed: the question is short (roughly <= 25 words), asks about ONE concept,
   and does not reference "the text/source". Fail bloated, convoluted, or meta questions.
+- concise-options: every option is at most roughly ~10 words — a phrase or short clause,
+  not a sentence or paragraph. Fail questions with long, essay-like options.
 - If any check fails, that question's verdict is "fail" and you explain briefly in its notes.
 
 # Output

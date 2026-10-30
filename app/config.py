@@ -36,7 +36,7 @@ LEVELS = {
     "quick": {
         "target_questions": 50,
         "questions_per_chunk": 1,
-        "max_pages": 1,
+        "max_pages": 4,
         "difficulty_hint": (
             "\n\nDIFFICULTY: Beginner. Ask straightforward fact-recall questions about the "
             "most important concepts a newcomer must know. Keep phrasing simple and direct."),

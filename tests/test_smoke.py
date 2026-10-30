@@ -497,3 +497,48 @@ def test_goal_is_required_and_persisted():
     deck_id = int(r.headers["location"].split("created=")[1])
     deck = db.query_one("SELECT goal FROM decks WHERE id = ?", (deck_id,))
     assert deck["goal"] == "Master inventory basics"
+
+
+def test_all_registered_prompts_exist_and_load():
+    """A prompt referenced in _PROMPTS but missing on disk fails OPEN in
+    production (triage KeyError bug). It must fail loudly instead."""
+    from app.generation import _PROMPTS, _system_prompt
+    assert set(_PROMPTS) == {"generate", "verify", "triage"}
+    for name, path in _PROMPTS.items():
+        assert path.exists(), f"prompt file missing: {path}"
+        text = _system_prompt(name)
+        assert len(text) > 200, f"prompt {name} looks empty"
+
+
+def test_triage_prompt_is_sent_to_lld(monkeypatch):
+    """The triage call must actually use the registered triage system prompt."""
+    import time
+    from app.llm.mock import MockProvider
+
+    sent = {}
+
+    class SpyProvider(MockProvider):
+        def chat(self, model, system, user, **kw):
+            sent.setdefault("systems", []).append(system[:40])
+            return super().chat(model, system, user, **kw)
+
+    from app import generation
+    orig = generation._get_provider
+    generation._get_provider = lambda user_id: (SpyProvider(), "mock-model")
+    try:
+        client.post("/register", data={"email": "triage@b.c", "password": "password123",
+                                       "display_name": "T"}, follow_redirects=False)
+        r = client.post("/new", data={"title": "T", "goal": "Use Ansible playbooks",
+                                      "topic_text": "Ansible playbooks run tasks. " * 60},
+                        follow_redirects=False)
+        assert r.status_code == 303
+        deck_id = int(r.headers["location"].split("created=")[1])
+        for _ in range(50):
+            job = db.query_one("SELECT * FROM jobs WHERE deck_id = ?", (deck_id,))
+            if job and job["status"] in ("done", "failed"):
+                break
+            time.sleep(0.2)
+        assert job["status"] == "done"
+        assert any("classify text excerpts" in sys for sys in sent["systems"]), sent["systems"]
+    finally:
+        generation._get_provider = orig

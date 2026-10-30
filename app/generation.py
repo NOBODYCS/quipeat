@@ -24,6 +24,7 @@ log = logging.getLogger("quipeat.generation")
 _PROMPTS = {
     "generate": Path(__file__).parent / "prompts" / f"generate_{PROMPT_VERSION}.md",
     "verify": Path(__file__).parent / "prompts" / f"verify_{PROMPT_VERSION}.md",
+    "triage": Path(__file__).parent / "prompts" / f"triage_{PROMPT_VERSION}.md",
 }
 
 
@@ -343,6 +344,11 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
                     log.info("[job %s] chunk %s: rejected by verify (score=%s < %s): %r",
                              job_id, chunk["idx"], score, MIN_VERIFY_SCORE, q.prompt[:80])
                     continue
+                if not db.query_one("SELECT 1 FROM decks WHERE id = ?", (deck_id,)):
+                    log.info("[job %s] deck %s deleted mid-run; stopping", job_id, deck_id)
+                    db.execute("UPDATE jobs SET status='done', finished_at=datetime('now'),"
+                               " message='Deck deleted during generation.' WHERE id=?", (job_id,))
+                    return
                 inserted = db.query_one(
                     "SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))["n"]
                 if inserted >= target_questions:
