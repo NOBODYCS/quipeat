@@ -143,19 +143,29 @@ def _get_provider(user_id: int):
     return provider, us["default_model"]
 
 
-def _normalize_options(q: QuestionDraft) -> QuestionDraft:
-    seen, options = set(), []
+def _normalize_options(q: QuestionDraft) -> QuestionDraft | None:
+    """Dedup options while tracking the correct answer BY TEXT, never by index.
+
+    Returns None (drop the question) when fewer than 4 distinct non-empty
+    options remain or the claimed-correct option is unidentifiable after
+    dedup. Never pads with placeholder options and never clamps a stale
+    correct_index — that used to silently mark a wrong option as correct.
+    """
+    correct_text = q.options[q.correct_index].strip() if 0 <= q.correct_index < len(q.options) else ""
+    seen: dict[str, str] = {}
     for opt in q.options:
         opt = opt.strip()
-        key = opt.lower()
-        if key and key not in seen:
-            seen.add(key)
-            options.append(opt)
-    while len(options) < 4:
-        options.append(f"Distractor {len(options) + 1}")
-    q.options = options[:4]
-    if q.correct_index >= len(q.options):
-        q.correct_index = 0
+        if opt and opt.lower() not in seen:
+            seen[opt.lower()] = opt
+    options = list(seen.values())
+    if len(options) < 4:
+        return None
+    options = options[:4]
+    new_index = next((i for i, o in enumerate(options) if o.lower() == correct_text.lower()), None)
+    if new_index is None:
+        return None  # correct option was removed as a duplicate -> drop, never guess
+    q.options = options
+    q.correct_index = new_index
     return q
 
 
@@ -379,6 +389,10 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
             candidates = []
             for draft in drafts.questions:
                 q = _normalize_options(draft)
+                if q is None:
+                    log.info("[job %s] chunk %s: dropped draft with <4 distinct options or "
+                             "unidentifiable correct option: %r", job_id, chunk["idx"], draft.prompt[:80])
+                    continue
                 if any(_similarity(q.prompt, s) > 0.85 for s in seen_prompts):
                     log.info("[job %s] chunk %s: skipped duplicate prompt %r",
                              job_id, chunk["idx"], q.prompt[:80])

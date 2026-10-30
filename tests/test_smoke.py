@@ -929,3 +929,33 @@ def test_500_handler_renders_page():
     r = c.get("/_boom")
     assert r.status_code == 500 and "Something broke" in r.text
     m.app.routes.remove(next(r for r in m.app.routes if getattr(r, "path", "") == "/_boom"))
+
+
+def test_normalize_options_never_placeholders_never_stale_correct():
+    """F1/F2: dedup tracks correct answer by text; <4 distinct options -> drop;
+    placeholders are never produced."""
+    from app.generation import _normalize_options, QuestionDraft
+    # options A,B,A,C with correct=1 ('B') -> distinct [A,B,C] <4 -> drop
+    assert _normalize_options(QuestionDraft(prompt="P?", options=["A", "B", "A", "C"], correct_index=1)) is None
+    # 4 distinct with a duplicate that is NOT the correct one: A,B,B,C correct=3 ('C') -> [A,B,C] <4 -> None
+    assert _normalize_options(QuestionDraft(prompt="P?", options=["A", "B", "B", "C"], correct_index=3)) is None
+    # 4 distinct with correct in the middle: A,B,C,D correct=2 ('C') -> unchanged
+    q = _normalize_options(QuestionDraft(prompt="P?", options=["A", "B", "C", "D"], correct_index=2))
+    assert q is not None and q.options == ["A", "B", "C", "D"] and q.correct_index == 2
+    # case-insensitive duplicate of the correct option: A,B,C,c correct=3 -> 'c' dup of 'C' removed,
+    # distinct [A,B,C] <4 -> None (correct text 'c' still maps but too few options)
+    assert _normalize_options(QuestionDraft(prompt="P?", options=["A", "B", "C", "c"], correct_index=3)) is None
+    # remap where dedup shifts the correct index: options [X, A, B, A] correct=2 ('B') -> [X,A,B] <4 -> None
+    # and [X, Y, A, A] correct=1 ('Y') -> [X,Y,A] <4 -> None; use 4 distinct + 1 dup via direct model bypass:
+    from app.generation import QuestionDraft as QD
+    raw = QD.model_construct(prompt="P?", options=["A", "B", "C", "D", "B"], correct_index=2,
+                              explanation="e", difficulty="medium")
+    q = _normalize_options(raw)
+    assert q is not None and q.options == ["A", "B", "C", "D"] and q.correct_index == 2
+    # correct option removed as duplicate: A,B,A,C correct=0 ('A') -> [A,B,C] <4 -> None (never clamp)
+    assert _normalize_options(QuestionDraft(prompt="P?", options=["A", "B", "A", "C"], correct_index=0)) is None
+    # empty options padded before -> placeholders: must now be None
+    assert _normalize_options(QuestionDraft(prompt="P?", options=["A", "", "B", ""], correct_index=0)) is None
+    # placeholder-looking real strings are kept only if 4 distinct
+    q = _normalize_options(QuestionDraft(prompt="P?", options=["X", "Y", "Z", "W"], correct_index=3))
+    assert q is not None and q.correct_index == 3 and not any("Distractor" in o for o in q.options)
