@@ -1,5 +1,6 @@
 import asyncio
 import importlib.util
+import logging
 import re
 from collections import deque
 from pathlib import Path
@@ -12,6 +13,8 @@ from docx import Document as DocxDocument
 from .config import settings
 
 _CRAWL4AI_AVAILABLE = importlib.util.find_spec("crawl4ai") is not None
+
+log = logging.getLogger("quipeat.ingest")
 
 CHUNK_TOKENS = 450
 OVERLAP_TOKENS = 60
@@ -99,6 +102,7 @@ def _crawl4ai_extract(url: str, max_pages: int) -> str:
     from crawl4ai.content_filter_strategy import PruningContentFilter
     from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
+    log.info("crawl4ai: fetching %s (budget=%s pages, JS rendering)", url, max_pages)
     browser_cfg = BrowserConfig(headless=True, text_mode=True)
     run_cfg = CrawlerRunConfig(
         cache_mode="BYPASS",
@@ -132,6 +136,7 @@ def _crawl4ai_extract(url: str, max_pages: int) -> str:
     texts = asyncio.run(_run())
     if not texts:
         raise IngestError("__err_extract")
+    log.info("crawl4ai: %s pages yielded text from %s", len(texts), url)
     return "\n\n".join(texts)
 
 
@@ -145,8 +150,11 @@ def extract_text_from_url(url: str, max_pages: int = 1) -> str:
             return _crawl4ai_extract(url, max_pages)
         except IngestError:
             raise
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("crawl4ai failed (%s: %s), falling back to trafilatura for %s",
+                        type(e).__name__, str(e)[:200], url)
+    else:
+        log.info("crawl4ai not installed; using httpx+trafilatura for %s", url)
     return _plain_extract_text_from_url(url, max_pages)
 
 
@@ -170,6 +178,7 @@ def _plain_extract_text_from_url(url: str, max_pages: int = 1) -> str:
     if len(first_text) < 200:
         raise IngestError("__err_extract")
     texts.append(first_text)
+    log.info("trafilatura: fetched %s (%s words)", url, len(first_text.split()))
 
     if max_pages <= 1:
         return first_text
@@ -198,6 +207,7 @@ def _plain_extract_text_from_url(url: str, max_pages: int = 1) -> str:
         for link in _extract_links(html, next_url, host):
             if link not in visited and len(visited) < max_pages * 4:
                 queue.append(link)
+    log.info("trafilatura: %s pages fetched for %s", pages_fetched, url)
     if not texts:
         raise IngestError("__err_extract")
     return "\n\n".join(texts)

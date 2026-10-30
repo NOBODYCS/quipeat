@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import time
 import uuid
@@ -17,6 +18,8 @@ from .ingest import extract_text_from_url, chunk_text
 
 PROMPT_VERSION = "v1"
 MIN_VERIFY_SCORE = 0.7
+
+log = logging.getLogger("quipeat.generation")
 
 _PROMPTS = {
     "generate": Path(__file__).parent / "prompts" / f"generate_{PROMPT_VERSION}.md",
@@ -140,6 +143,8 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
         " JOIN sources s ON s.id = d.source_id WHERE d.id = ?", (deck_id,))
     gen_lang = deck["lang"] if "lang" in deck.keys() and deck["lang"] in LANG_NAMES else "en"
     level = deck["level"] if "level" in deck.keys() and deck["level"] in LEVELS else DEFAULT_LEVEL
+    log.info("[job %s] deck=%s title=%r kind=%s level=%s lang=%s",
+             job_id, deck_id, deck["title"], deck["source_kind"], level, gen_lang)
     cfg = LEVELS[level]
     questions_per_chunk = cfg["questions_per_chunk"]
     target_questions = cfg["target_questions"]
@@ -149,9 +154,12 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
     if deck["source_kind"] == "url":
         db.execute("UPDATE jobs SET status='running', total=0, started_at=datetime('now'),"
                    " message='Fetching and reading the link…' WHERE id=?", (job_id,))
+        log.info("[job %s] crawling url=%s max_pages=%s",
+                 job_id, deck["original_ref"], cfg["max_pages"])
         try:
             raw = extract_text_from_url(deck["original_ref"], max_pages=cfg["max_pages"])
         except Exception as e:
+            log.error("[job %s] crawl failed: %s: %s", job_id, type(e).__name__, e)
             ulang = (db.query_one("SELECT lang FROM users WHERE id = ?", (user_id,)) or {"lang": "en"})["lang"]
             key = str(e)
             msg = translate(ulang, key[2:]) if key.startswith("__") else str(e)[:200]
@@ -164,10 +172,13 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
                        " finished_at=datetime('now') WHERE id=?", (job_id,))
             db.execute("UPDATE decks SET status='failed' WHERE id=?", (deck_id,))
             return
+        log.info("[job %s] crawl done: %s words extracted", job_id, len(raw.split()))
         db.execute("UPDATE sources SET raw_text=? WHERE id=?", (raw, deck["source_id"]))
-        for idx, piece in enumerate(chunk_text(raw)):
+        pieces = chunk_text(raw)
+        for idx, piece in enumerate(pieces):
             db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)",
                        (deck["source_id"], idx, piece))
+        log.info("[job %s] chunked into %s pieces", job_id, len(pieces))
 
     chunks = db.query(
         "SELECT * FROM chunks WHERE source_id = ? ORDER BY idx", (deck["source_id"],))
@@ -178,10 +189,16 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
     # evenly across nav/legal/changelog filler. Ties and near-zero scores
     # keep the original order (even spread across the source).
     needed = max(1, -(-target_questions // questions_per_chunk))
+    log.info("[job %s] %s chunks available, budget=%s chunks (target=%s q, %s q/chunk)",
+             job_id, len(chunks), needed, target_questions, questions_per_chunk)
     if len(chunks) > needed:
         terms = _topic_terms(deck["title"])
         scored = [(_topic_score(c["text"], terms), i, c) for i, c in enumerate(chunks)]
         top = min(len(chunks), max(needed, needed * 2))
+        log.info("[job %s] triage: topic terms=%s, scores min=%.4f max=%.4f mean=%.4f",
+                 job_id, sorted(terms)[:10],
+                 min(t[0] for t in scored), max(t[0] for t in scored),
+                 sum(t[0] for t in scored) / len(scored))
         best = sorted(scored, key=lambda t: (-t[0], t[1]))[:top]
         best = sorted(best, key=lambda t: t[1])
         step = len(best) / needed
@@ -193,13 +210,17 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
                 seen_idx.add(c["id"])
                 deduped.append(c)
         chunks = deduped
+        log.info("[job %s] triage: sampled %s chunks from top-%s pool", job_id, len(chunks), top)
 
     try:
         provider, model = _get_provider(user_id)
+        log.info("[job %s] provider=%s model=%s", job_id, provider.name, model)
         db.execute("UPDATE jobs SET status='running', total=?, started_at=datetime('now') WHERE id=?",
                    (len(chunks), job_id))
         seen_prompts: list[str] = []
         for chunk in chunks:
+            log.info("[job %s] chunk %s: drafting (%s words)", job_id, chunk["idx"],
+                     len(chunk["text"].split()))
             user_msg = (
                 f"TOPIC: The user wants a quiz about: {deck['title']}. This text is one excerpt"
                 f" from the source of truth for that topic.\n\n"
@@ -208,16 +229,23 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
                 + cfg["difficulty_hint"] + _lang_instruction(gen_lang)
             )
             try:
-                drafts, _ = structured_call(provider, model, _system_prompt("generate"),
-                                             user_msg, GenerateResponse, temperature=0.2,
-                                             max_tokens=2048)
+                drafts, gen_result = structured_call(provider, model, _system_prompt("generate"),
+                                                     user_msg, GenerateResponse, temperature=0.2,
+                                                     max_tokens=2048)
+                log.info("[job %s] chunk %s: %s drafts (in=%s out=%s tokens)",
+                         job_id, chunk["idx"], len(drafts.questions),
+                         gen_result.input_tokens, gen_result.output_tokens)
             except Exception as e:
+                log.error("[job %s] chunk %s: generation failed: %s: %s",
+                          job_id, chunk["idx"], type(e).__name__, str(e)[:300])
                 db.execute("UPDATE jobs SET done=done+1, message=? WHERE id=?",
                            (f"chunk {chunk['idx']}: generation failed: {str(e)[:200]}", job_id))
                 continue
             for draft in drafts.questions:
                 q = _normalize_options(draft)
                 if any(_similarity(q.prompt, s) > 0.85 for s in seen_prompts):
+                    log.info("[job %s] chunk %s: skipped duplicate prompt %r",
+                             job_id, chunk["idx"], q.prompt[:80])
                     continue
                 verify_msg = (
                     f"Source text:\n\"\"\"\n{chunk['text']}\n\"\"\"\n\n"
@@ -230,9 +258,15 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
                                                  verify_msg, VerifyResponse, temperature=0.0,
                                                  max_tokens=512)
                     score = verdict.score if verdict.verdict == "pass" else 0.0
-                except Exception:
+                    log.info("[job %s] chunk %s: verify verdict=%s score=%s",
+                             job_id, chunk["idx"], verdict.verdict, score)
+                except Exception as e:
+                    log.warning("[job %s] chunk %s: verify call failed (%s: %s), assuming 0.5",
+                                job_id, chunk["idx"], type(e).__name__, str(e)[:150])
                     score = 0.5
                 if score < MIN_VERIFY_SCORE:
+                    log.info("[job %s] chunk %s: rejected by verify (score=%s < %s): %r",
+                             job_id, chunk["idx"], score, MIN_VERIFY_SCORE, q.prompt[:80])
                     continue
                 inserted = db.query_one(
                     "SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))["n"]
@@ -251,6 +285,8 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
             db.execute("UPDATE jobs SET done=done+1 WHERE id=?", (job_id,))
             time.sleep(0.05)
         inserted = db.query_one("SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))["n"]
+        log.info("[job %s] finished: %s questions inserted (target was %s)",
+                 job_id, inserted, target_questions)
         msg = "Generation complete" if inserted else (
             "Generation complete, but the source contained little substantive content"
             " about the topic — try a more specific link or paste the text directly.")
@@ -258,6 +294,7 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
                    (msg, job_id))
         db.execute("UPDATE decks SET status='ready' WHERE id=?", (deck_id,))
     except Exception as e:
+        log.exception("[job %s] generation crashed: %s", job_id, e)
         ulang = (db.query_one("SELECT lang FROM users WHERE id = ?", (user_id,)) or {"lang": "en"})["lang"]
         msg = str(e)
         if msg in ("builtin_denied", "builtin_no_server_key", "no_llm_key", "no_key_builtin"):

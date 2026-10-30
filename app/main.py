@@ -1,4 +1,5 @@
 import json
+import logging
 import secrets
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +21,12 @@ from .security import (create_session, decrypt_secret, delete_session, encrypt_s
 
 BASE_DIR = Path(__file__).parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+log = logging.getLogger("quipeat.main")
 
 app = FastAPI(title="Quipeat")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
@@ -493,6 +500,8 @@ async def regen_deck(request: Request, deck_id: int):
         return RedirectResponse("/decks", status_code=303)
     db.execute("UPDATE decks SET status='draft' WHERE id = ?", (deck_id,))
     job_id = start_generation(user["id"], deck_id)
+    log.info("deck %s created (user=%s kind=%s level=%s), job %s started",
+             deck_id, user["id"], kind, level, job_id)
     return RedirectResponse(f"/decks/{deck_id}?job={job_id}", status_code=303)
 
 
