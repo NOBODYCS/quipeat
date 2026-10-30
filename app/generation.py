@@ -10,7 +10,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from . import db
-from .config import DEFAULT_LEVEL, LEVELS, settings
+from .config import (DEFAULT_LEVEL, LEVELS, MAX_PASSES_PER_CHUNK,
+                     MAX_QUESTIONS_PER_CHUNK, TARGET_CHOICES, settings)
 from .llm.mock import MockProvider
 from .llm.providers import make_provider
 from .llm.structured import structured_call
@@ -307,8 +308,12 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
     log.info("[job %s] deck=%s title=%r goal=%r kind=%s level=%s lang=%s",
              job_id, deck_id, deck["title"], goal[:120], deck["source_kind"], level, gen_lang)
     cfg = LEVELS[level]
-    questions_per_chunk = cfg["questions_per_chunk"]
-    target_questions = cfg["target_questions"]
+    # Deck size target comes from the user's choice on /new (20/50/100/200),
+    # not from the depth level. Per-chunk density is derived from the target.
+    target_questions = deck["target_questions"] if "target_questions" in deck.keys() and deck["target_questions"] in TARGET_CHOICES else 50
+    # per-chunk density derives from the target; recomputed after chunking below
+    questions_per_chunk = min(MAX_QUESTIONS_PER_CHUNK, max(1, -(-target_questions // 2)))
+    max_passes = 1
 
     # URL sources: crawl now (in the background), store text + chunks.
     # The POST returned immediately; the job bar polls for progress.
@@ -343,6 +348,12 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
 
     chunks = db.query(
         "SELECT * FROM chunks WHERE source_id = ? ORDER BY idx", (deck["source_id"],))
+    # Now that we know the real chunk count, derive density and multi-pass budget.
+    n_chunks = max(1, len(chunks))
+    questions_per_chunk = min(MAX_QUESTIONS_PER_CHUNK, max(1, -(-target_questions // n_chunks)))
+    max_passes = MAX_PASSES_PER_CHUNK if target_questions > n_chunks * MAX_QUESTIONS_PER_CHUNK else 1
+    log.info("[job %s] target=%s chunks=%s -> %s q/chunk, %s pass(es)", job_id,
+             target_questions, n_chunks, questions_per_chunk, max_passes)
 
     # Triage FIRST, then sample. Cheap keyword scoring picks a candidate pool
     # (top 2x budget) from all chunks; the LLM then classifies that pool as
@@ -401,28 +412,35 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
                 seen_prompts.append(old["prompt"])
                 seen_option_sets.add(_option_set_key(json.loads(old["options_json"])))
         for chunk in chunks:
-            log.info("[job %s] chunk %s: drafting (%s words)", job_id, chunk["idx"],
-                     len(chunk["text"].split()))
-            user_msg = (
-                f"LEARNING GOAL: The user wants to learn: {goal}.\n"
-                f"This text is one excerpt from their chosen source of truth. Generate"
-                f" questions that serve this learning goal.\n\n"
-                f"Source text:\n\"\"\"\n{chunk['text']}\n\"\"\"\n\n"
-                f"Generate {questions_per_chunk} multiple-choice questions from the source text above."
-                + cfg["difficulty_hint"] + _lang_instruction(gen_lang)
-            )
+            for pass_no in range(max_passes):
+                log.info("[job %s] chunk %s pass %s: drafting (%s words)", job_id, chunk["idx"],
+                         pass_no + 1, len(chunk["text"].split()))
+                db.execute("UPDATE jobs SET stage='generating' WHERE id=?", (job_id,))
+                aspect = ""
+                if pass_no > 0:
+                    aspects = ["focus on definitions and key terms",
+                               "focus on mechanisms, causes and effects",
+                               "focus on applications, examples and edge cases"]
+                    aspect = ("\n\nCOVERAGE: this is an additional pass over the same excerpt — do NOT "
+                              f"repeat questions from earlier passes; {aspects[(pass_no - 1) % len(aspects)]}.\n")
+                user_msg = (
+                    f"LEARNING GOAL: The user wants to learn: {goal}.\n"
+                    f"This text is one excerpt from their chosen source of truth. Generate"
+                    f" questions that serve this learning goal.\n\n"
+                    f"Source text:\n\"\"\"\n{chunk['text']}\n\"\"\"\n\n"
+                    f"Generate {questions_per_chunk} multiple-choice questions from the source text above."
+                    + aspect + cfg["difficulty_hint"] + _lang_instruction(gen_lang)
+                )
             try:
                 drafts, gen_result = structured_call(provider, model, _system_prompt("generate"),
                                                      user_msg, GenerateResponse, temperature=0.2,
                                                      max_tokens=2048)
-                log.info("[job %s] chunk %s: %s drafts (in=%s out=%s tokens)",
-                         job_id, chunk["idx"], len(drafts.questions),
+                log.info("[job %s] chunk %s pass %s: %s drafts (in=%s out=%s tokens)",
+                         job_id, chunk["idx"], pass_no + 1, len(drafts.questions),
                          gen_result.input_tokens, gen_result.output_tokens)
             except Exception as e:
                 log.error("[job %s] chunk %s: generation failed: %s: %s",
                           job_id, chunk["idx"], type(e).__name__, str(e)[:300])
-                db.execute("UPDATE jobs SET done=done+1, message=? WHERE id=?",
-                           (f"chunk {chunk['idx']}: generation failed: {str(e)[:200]}", job_id))
                 continue
             candidates = []
             for draft in drafts.questions:
@@ -477,6 +495,7 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
                 db.execute("UPDATE jobs SET status='done', finished_at=datetime('now'),"
                            " message='Deck deleted during generation.' WHERE id=?", (job_id,))
                 return
+            db.execute("UPDATE jobs SET stage='verifying' WHERE id=?", (job_id,))
             for i, q in enumerate(candidates):
                 score = scores.get(i, 0.5)
                 db.execute("UPDATE jobs SET generated=generated+1 WHERE id=?", (job_id,))
@@ -508,12 +527,22 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
                 break
             db.execute("UPDATE jobs SET done=done+1 WHERE id=?", (job_id,))
             job_handler.flush_batch()
+            if db.query_one("SELECT COUNT(*) n FROM questions WHERE deck_id = ?", (deck_id,))["n"] >= target_questions:
+                break  # target hit mid-chunk-list; skip remaining passes/chunks
         inserted = db.query_one("SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))["n"]
         log.info("[job %s] finished: %s questions inserted (target was %s)",
                  job_id, inserted, target_questions)
-        msg = "Generation complete" if inserted else (
-            "Generation complete, but the source contained little substantive content"
-            " about the topic — try a more specific link or paste the text directly.")
+        db.execute("UPDATE jobs SET stage='done' WHERE id=?", (job_id,))
+        if inserted >= target_questions:
+            msg = f"Generation complete — {inserted} questions (target {target_questions})."
+        elif inserted:
+            msg = (f"Generation complete — {inserted} of {target_questions} target questions. "
+                   f"Shortfall: the source had only {len(chunks)} usable excerpt(s); "
+                   f"max {len(chunks) * MAX_QUESTIONS_PER_CHUNK * MAX_PASSES_PER_CHUNK} questions "
+                   f"were possible from it. Add a bigger source or lower the target.")
+        else:
+            msg = ("Generation complete, but the source contained little substantive content"
+                   " about the topic — try a more specific link or paste the text directly.")
         db.execute("UPDATE jobs SET status='done', finished_at=datetime('now'), message=? WHERE id=?",
                    (msg, job_id))
         db.execute("UPDATE decks SET status='ready' WHERE id=?", (deck_id,))

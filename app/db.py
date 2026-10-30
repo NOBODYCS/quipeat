@@ -85,6 +85,8 @@ def init_db() -> None:
             conn.execute("ALTER TABLE decks ADD COLUMN level TEXT NOT NULL DEFAULT 'standard'")
         if "goal" not in dcols:
             conn.execute("ALTER TABLE decks ADD COLUMN goal TEXT NOT NULL DEFAULT ''")
+        if "target_questions" not in dcols:
+            conn.execute("ALTER TABLE decks ADD COLUMN target_questions INTEGER NOT NULL DEFAULT 50")
         # Normalize Python-ISO timestamps ('...T...+00:00') written by older
         # versions of fsrs/security into SQLite's datetime('now') format so
         # string comparisons in SQL work uniformly.

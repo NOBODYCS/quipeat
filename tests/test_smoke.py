@@ -1036,3 +1036,44 @@ def test_explanations_mandatory_and_notes_stored():
     with _pytest.raises(Exception):
         QuestionDraft(prompt="A valid length prompt?", options=["a","b","c","d"],
                       correct_index=0, explanation="")
+
+
+def test_target_size_drives_count_and_shortfall_reported():
+    """P1-7: target is stored on the deck, drives per-chunk density, and a small
+    source either hits the target via extra passes or reports a shortfall reason."""
+    from app.config import MAX_PASSES_PER_CHUNK, MAX_QUESTIONS_PER_CHUNK
+    c = TestClient(app)
+    c.post("/register", data={"email": "tgt@example.com", "password": "password123"}, follow_redirects=False)
+    # tiny source, target 200 -> cannot be reached; shortfall message must say why
+    r = csrf_post(c, "/new", data={"title": "Tiny", "goal": "g", "topic_text": "One short fact here. " * 5,
+                                   "target": "200"}, follow_redirects=False)
+    assert r.status_code == 303, r.text[:300]
+    deck_id = int(r.headers["location"].split("created=")[1])
+    deck = db.query_one("SELECT target_questions FROM decks WHERE id=?", (deck_id,))
+    assert deck["target_questions"] == 200
+    import time
+    for _ in range(120):
+        job = db.query_one("SELECT * FROM jobs WHERE deck_id=? ORDER BY rowid DESC LIMIT 1", (deck_id,))
+        if job and job["status"] in ("done", "failed"): break
+        time.sleep(0.25)
+    assert job["status"] == "done", job["error"]
+    n = db.query_one("SELECT COUNT(*) c FROM questions WHERE deck_id=?", (deck_id,))["c"]
+    max_possible = 1 * MAX_QUESTIONS_PER_CHUNK * MAX_PASSES_PER_CHUNK
+    assert n <= max_possible
+    if n < 200:
+        assert "Shortfall" in job["message"] or "target" in job["message"].lower(), job["message"]
+    # target 20 on a normal source: count should be <= 20 and > 0
+    r = csrf_post(c, "/new", data={"title": "Small", "goal": "g", "topic_text": "Mitochondria produce ATP. " * 60,
+                                   "target": "20"}, follow_redirects=False)
+    deck2 = int(r.headers["location"].split("created=")[1])
+    for _ in range(120):
+        job = db.query_one("SELECT * FROM jobs WHERE deck_id=? ORDER BY rowid DESC LIMIT 1", (deck2,))
+        if job and job["status"] in ("done", "failed"): break
+        time.sleep(0.25)
+    n2 = db.query_one("SELECT COUNT(*) c FROM questions WHERE deck_id=?", (deck2,))["c"]
+    assert 0 < n2 <= 20, n2
+    # invalid target falls back to default
+    r = csrf_post(c, "/new", data={"title": "Bad", "goal": "g", "topic_text": "x " * 100, "target": "999"},
+                  follow_redirects=False)
+    deck3 = int(r.headers["location"].split("created=")[1])
+    assert db.query_one("SELECT target_questions FROM decks WHERE id=?", (deck3,))["target_questions"] == 50

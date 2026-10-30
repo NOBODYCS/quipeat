@@ -64,6 +64,13 @@ LEVELS = {
 }
 DEFAULT_LEVEL = "standard"
 
+# User-chosen deck size targets (questions). The pipeline derives
+# questions-per-chunk from this; capped at 200 to bound LLM cost.
+TARGET_CHOICES = (20, 50, 100, 200)
+DEFAULT_TARGET = 50
+MAX_QUESTIONS_PER_CHUNK = 6   # hard cap per single LLM call per chunk
+MAX_PASSES_PER_CHUNK = 3      # extra passes on small sources, different aspects
+
 
 settings = Settings()
 

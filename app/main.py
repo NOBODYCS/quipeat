@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 
 from . import db, gamify
 from .fsrs import grade, xp_for
-from .config import DEFAULT_LEVEL, LEVELS, settings
+from .config import DEFAULT_LEVEL, DEFAULT_TARGET, LEVELS, TARGET_CHOICES, settings
 from .i18n import LANGS, STRINGS, translate
 from .generation import start_generation
 from .ingest import chunk_text, extract_text_from_file, extract_text_from_url, IngestError
@@ -325,18 +325,18 @@ async def logout(request: Request):
 # ---------- decks & sources ----------
 
 def _expected_questions(deck_id: int) -> int:
-    """Honest estimate for the job bar: the level target, capped by what the
+    """Honest estimate for the job bar: the deck's target, capped by what the
     source's chunks can actually yield (target for URL decks still crawling)."""
-    deck = db.query_one("SELECT source_id, level FROM decks WHERE id = ?", (deck_id,))
+    deck = db.query_one("SELECT source_id, target_questions FROM decks WHERE id = ?", (deck_id,))
     if not deck:
         return 0
-    level = deck["level"] if deck["level"] in LEVELS else DEFAULT_LEVEL
-    cfg = LEVELS[level]
+    target = deck["target_questions"] if deck["target_questions"] in TARGET_CHOICES else DEFAULT_TARGET
     n_chunks = db.query_one("SELECT COUNT(*) AS n FROM chunks WHERE source_id = ?",
                             (deck["source_id"],))["n"]
     if n_chunks:
-        return min(cfg["target_questions"], n_chunks * cfg["questions_per_chunk"])
-    return cfg["target_questions"]
+        from .config import MAX_PASSES_PER_CHUNK, MAX_QUESTIONS_PER_CHUNK
+        return min(target, n_chunks * MAX_QUESTIONS_PER_CHUNK * MAX_PASSES_PER_CHUNK)
+    return target
 
 @app.get("/decks", response_class=HTMLResponse)
 async def decks(request: Request, created: int | None = None):
@@ -352,13 +352,14 @@ async def decks(request: Request, created: int | None = None):
 @app.get("/new", response_class=HTMLResponse)
 async def new_source_form(request: Request):
     require_user(request)
-    return page(request, "new_source.html", error=None)
+    return page(request, "new_source.html", error=None, target_choices=TARGET_CHOICES, default_target=DEFAULT_TARGET)
 
 
 @app.post("/new")
 async def new_source(request: Request, title: str = Form(...), goal: str = Form(""),
                      url: str = Form(""), topic_text: str = Form(""),
                      lang: str = Form("en"), level: str = Form(DEFAULT_LEVEL),
+                     target: int = Form(DEFAULT_TARGET),
                      file: UploadFile | None = File(None)):
     user = require_user(request)
     title = title.strip()
@@ -369,6 +370,8 @@ async def new_source(request: Request, title: str = Form(...), goal: str = Form(
         lang = user["lang"] if user["lang"] in LANGS else "en"
     if level not in LEVELS:
         level = DEFAULT_LEVEL
+    if target not in TARGET_CHOICES:
+        target = DEFAULT_TARGET
     try:
         if file and file.filename:
             data = await file.read()
@@ -403,7 +406,8 @@ async def new_source(request: Request, title: str = Form(...), goal: str = Form(
         return page(request, "new_source.html", error=translate(lang_of(request, user), "err_no_text"))
     if not goal:
         return page(request, "new_source.html", error=translate(lang_of(request, user), "err_no_goal"),
-                    title=title, goal=goal, url=url, topic_text=topic_text, level=level)
+                    title=title, goal=goal, url=url, topic_text=topic_text, level=level,
+                    target_choices=TARGET_CHOICES, default_target=DEFAULT_TARGET)
     if not title:
         title = (ref or "Untitled")[:80]
     cur = db.execute("INSERT INTO sources(user_id, kind, title, original_ref, raw_text) VALUES (?, ?, ?, ?, ?)",
@@ -411,8 +415,9 @@ async def new_source(request: Request, title: str = Form(...), goal: str = Form(
     source_id = cur.lastrowid
     for idx, piece in enumerate(chunk_text(raw)):
         db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)", (source_id, idx, piece))
-    cur = db.execute("INSERT INTO decks(user_id, source_id, title, goal, lang, level) VALUES (?, ?, ?, ?, ?, ?)",
-                     (user["id"], source_id, title, goal, lang, level))
+    cur = db.execute("INSERT INTO decks(user_id, source_id, title, goal, lang, level, target_questions)"
+                     " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                     (user["id"], source_id, title, goal, lang, level, target))
     deck_id = cur.lastrowid
     job_id = start_generation(user["id"], deck_id)
     return RedirectResponse(f"/decks?created={deck_id}", status_code=303)

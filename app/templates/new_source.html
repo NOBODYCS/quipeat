@@ -52,6 +52,13 @@
       </select>
       <p class="mt-1 text-xs text-mist-400">{{ t("level_hint") }}</p>
     </div>
+    <div>
+      <label for="target" class="label">{{ t("target_label") }}</label>
+      <select id="target" name="target" class="input">
+        {% for n in target_choices %}<option value="{{ n }}" {% if n == default_target %}selected{% endif %}>{{ n }} {{ t("questions_n") }}</option>{% endfor %}
+      </select>
+      <p class="mt-1 text-xs text-mist-400">{{ t("target_hint") }}</p>
+    </div>
     <button type="submit" class="btn-primary w-full">{{ t("generate_btn") }}</button>
   </form>
 </div>
