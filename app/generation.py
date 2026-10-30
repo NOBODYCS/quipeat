@@ -21,6 +21,33 @@ MIN_VERIFY_SCORE = 0.7
 
 log = logging.getLogger("quipeat.generation")
 
+
+class _JobEventStore(logging.Handler):
+    """Persists job log lines to job_events so admins can read exactly what
+    happened per deck build in the admin panel."""
+
+    def __init__(self, job_id: str):
+        super().__init__()
+        self.job_id = job_id
+        self.setFormatter(logging.Formatter("%(message)s"))
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            db.execute("INSERT INTO job_events(job_id, level, message) VALUES (?, ?, ?)",
+                       (self.job_id, record.levelname.lower(), msg[:1000]))
+        except Exception:
+            pass
+
+
+def _attach_job_logger(job_id: str) -> logging.Handler:
+    handler = _JobEventStore(job_id)
+    handler.setLevel(logging.INFO)
+    if log.getEffectiveLevel() > logging.INFO:
+        log.setLevel(logging.INFO)
+    log.addHandler(handler)
+    return handler
+
 _PROMPTS = {
     "generate": Path(__file__).parent / "prompts" / f"generate_{PROMPT_VERSION}.md",
     "verify": Path(__file__).parent / "prompts" / f"verify_{PROMPT_VERSION}.md",
@@ -191,6 +218,14 @@ def _lang_instruction(lang: str) -> str:
 def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
     """Runs as a background thread: for every chunk, draft questions, verify each
     against its chunk, dedup, and insert passing ones. Progress is tracked in jobs."""
+    job_handler = _attach_job_logger(job_id)
+    try:
+        _generate_deck_questions_inner(user_id, deck_id, job_id)
+    finally:
+        log.removeHandler(job_handler)
+
+
+def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str) -> None:
     job = db.query_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
     deck = db.query_one(
         "SELECT d.*, s.kind AS source_kind, s.original_ref FROM decks d"

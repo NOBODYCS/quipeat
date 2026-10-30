@@ -542,3 +542,45 @@ def test_triage_prompt_is_sent_to_lld(monkeypatch):
         assert any("classify text excerpts" in sys for sys in sent["systems"]), sent["systems"]
     finally:
         generation._get_provider = orig
+
+
+def test_admin_panel_shows_diagnostics_and_job_events():
+    """Admin observability: component health, recent jobs, and per-job events."""
+    import time
+
+    client.post("/register", data={"email": "admintest@b.c", "password": "password123",
+                                   "display_name": "AT"}, follow_redirects=False)
+    db.execute("UPDATE users SET role='admin' WHERE email='admintest@b.c'")
+
+    r = client.post("/new", data={"title": "Obs", "goal": "Learn observability",
+                                  "topic_text": "Observability needs logs metrics traces. " * 60},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    deck_id = int(r.headers["location"].split("created=")[1])
+    job = None
+    for _ in range(50):
+        job = db.query_one("SELECT * FROM jobs WHERE deck_id = ?", (deck_id,))
+        if job and job["status"] in ("done", "failed"):
+            break
+        time.sleep(0.2)
+    assert job["status"] == "done"
+
+    events = db.query("SELECT * FROM job_events WHERE job_id = ?", (job["id"],))
+    assert events, "expected job events to be persisted"
+    assert any("deck=" in e["message"] for e in events)
+
+    r = client.get("/admin")
+    assert r.status_code == 200
+    assert "System diagnostics" in r.text
+    assert "Recent generation jobs" in r.text
+    assert "events" in r.text
+
+    r = client.get(f"/admin/jobs/{job['id']}/events")
+    assert r.status_code == 200
+    assert "chunks available" in r.text
+
+    r = client.get("/health")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] in ("ok", "degraded")
+    assert "database" in body["components"]

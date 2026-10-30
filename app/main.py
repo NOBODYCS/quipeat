@@ -36,6 +36,21 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), na
 def _startup():
     db.init_db()
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
+    from . import diagnostics
+    results = diagnostics.run_all_checks()
+    degraded = [f"{k}: {v['detail']}" for k, v in results.items() if v["status"] != "ok"]
+    if degraded:
+        log.warning("startup diagnostics: degraded components -> %s", "; ".join(degraded))
+    else:
+        log.info("startup diagnostics: all components ok")
+
+
+@app.get("/health")
+async def health():
+    from . import diagnostics
+    results = diagnostics.run_all_checks()
+    overall = "ok" if all(v["status"] == "ok" for v in results.values()) else "degraded"
+    return {"status": overall, "components": results}
 
 
 def lang_of_user(user) -> str:
@@ -566,7 +581,29 @@ def require_admin(request: Request):
 async def admin_page(request: Request, msg: str | None = None, error: str | None = None):
     user = require_admin(request)
     users = db.query("SELECT id, email, display_name, role, created_at FROM users ORDER BY id")
-    return page(request, "admin.html", users=users, msg=msg, error=error)
+    from . import diagnostics
+    diag = diagnostics.run_all_checks()
+    jobs = db.query(
+        "SELECT j.id, j.status, j.total, j.done, j.error, j.created_at, j.finished_at,"
+        " d.title AS deck_title, d.id AS deck_id, u.email AS user_email"
+        " FROM jobs j JOIN decks d ON d.id = j.deck_id JOIN users u ON u.id = j.user_id"
+        " ORDER BY j.created_at DESC LIMIT 20")
+    return page(request, "admin.html", users=users, msg=msg, error=error,
+                diagnostics=diag, jobs=jobs)
+
+
+@app.get("/admin/jobs/{job_id}/events")
+async def admin_job_events(request: Request, job_id: str):
+    user = require_admin(request)
+    events = db.query(
+        "SELECT level, message, created_at FROM job_events WHERE job_id = ?"
+        " ORDER BY id", (job_id,))
+    job = db.query_one(
+        "SELECT j.*, d.title AS deck_title FROM jobs j JOIN decks d ON d.id = j.deck_id"
+        " WHERE j.id = ?", (job_id,))
+    if not job:
+        return RedirectResponse("/admin", status_code=303)
+    return page(request, "job_events.html", job=job, events=events)
 
 
 @app.post("/admin/users/{user_id}/role")

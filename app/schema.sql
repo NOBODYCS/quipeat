@@ -155,3 +155,12 @@ CREATE INDEX IF NOT EXISTS idx_reviews_user ON reviews(user_id);
 -- NOTE: onboarded_at is added by db.init_db() (idempotent ALTER), not here,
 -- so re-running this script on an existing DB never fails.
 -- NOTE: applied idempotently by db.init_db()
+
+CREATE TABLE IF NOT EXISTS job_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id     TEXT NOT NULL,
+    level      TEXT NOT NULL DEFAULT 'info',
+    message    TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_job_events_job ON job_events(job_id);

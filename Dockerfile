@@ -10,10 +10,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends gcc && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 RUN pip install --no-cache-dir -r requirements.txt && \
-    crawl4ai-setup && \
-    rm -rf /root/.cache /tmp/*
-ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
+    python -m playwright install --with-deps chromium && \
+    rm -rf /var/lib/apt/lists/* /tmp/*
 COPY app app
 COPY --from=css /out/app.css app/static/css/app.css
 RUN mkdir -p /app/data/uploads

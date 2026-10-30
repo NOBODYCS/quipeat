@@ -74,9 +74,12 @@ def _fetch(url: str) -> str:
     return resp.text
 
 
-def _extract_links(html: str, base_url: str, host: str) -> list[str]:
+def _extract_links_annotated(html: str, base_url: str, host: str) -> list[tuple[str, str]]:
+    """Same-domain links with their anchor text, for the AI crawl planner."""
     links, seen = [], set()
-    for href in re.findall(r'<a\b[^>]*?href\s*=\s*["\']([^"\'#]+)["\']', html, re.I):
+    for m in re.finditer(r'<a\b[^>]*?href\s*=\s*["\']([^"\'#]+)["\'][^>]*>(.*?)</a>',
+                         html, re.I | re.S):
+        href, anchor = m.group(1), re.sub(r"<[^>]+>|\s+", " ", m.group(2)).strip()
         if href.startswith(("mailto:", "javascript:", "tel:", "data:")):
             continue
         url = urljoin(base_url, href)
@@ -89,8 +92,12 @@ def _extract_links(html: str, base_url: str, host: str) -> list[str]:
             continue
         if url not in seen:
             seen.add(url)
-            links.append(url)
+            links.append((url, anchor[:80]))
     return links
+
+
+def _extract_links(html: str, base_url: str, host: str) -> list[str]:
+    return [u for u, _ in _extract_links_annotated(html, base_url, host)]
 
 
 def _crawl4ai_extract(url: str, max_pages: int) -> str:
@@ -152,6 +159,9 @@ def extract_text_from_url(url: str, max_pages: int = 1) -> str:
         except Exception as e:
             log.warning("crawl4ai failed (%s: %s), falling back to trafilatura for %s",
                         type(e).__name__, str(e)[:200], url)
+            from . import diagnostics
+            diagnostics.record("crawler", "degraded",
+                               f"crawl4ai unusable: {str(e)[:200]}")
     else:
         log.info("crawl4ai not installed; using httpx+trafilatura for %s", url)
     return _plain_extract_text_from_url(url, max_pages)
