@@ -10,10 +10,10 @@ services:
     volumes:
       - quipeat-data:/app/data
     ports:
-      # LAN only. Left side is the host port — set QUIPEAT_LAN_BIND to any free
-      # host port, e.g. QUIPEAT_LAN_BIND=127.0.0.1:37411:8000 (host 37411 -> container 8000).
-      # The container always listens on 8000 internally; only the host side changes.
-      - "${QUIPEAT_LAN_BIND:-127.0.0.1:8000}:8000"
+      # LAN only. Left side is the HOST (outside/reverse-proxy) port — deliberately
+      # obscure; the container always listens on 8000 internally. Override with
+      # QUIPEAT_LAN_BIND, e.g. QUIPEAT_LAN_BIND=0.0.0.0:41773:8000 for LAN-wide access.
+      - "${QUIPEAT_LAN_BIND:-127.0.0.1:37411:8000}:8000"
 
 volumes:
   quipeat-data:

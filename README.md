@@ -27,7 +27,7 @@ The container always listens on **8000 internally**. To use a different *host* p
 QUIPEAT_LAN_BIND=127.0.0.1:37411:8000
 ```
 
-→ app reachable on the Docker host at `http://127.0.0.1:37411` (or `0.0.0.0:37411:8000`
+→ app reachable on the Docker host at `http://127.0.0.1:37411` by default (obscure outside port; container stays on 8000) (or `QUIPEAT_LAN_BIND=0.0.0.0:41773:8000`
 for LAN). nginx then proxies `your.name` → `http://<docker-host>:37411`.
 
 In Portainer: create a stack from the repo (branch `main`, path `docker-compose.yml`)
