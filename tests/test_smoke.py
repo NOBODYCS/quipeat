@@ -517,7 +517,7 @@ def test_all_registered_prompts_exist_and_load():
     """A prompt referenced in _PROMPTS but missing on disk fails OPEN in
     production (triage KeyError bug). It must fail loudly instead."""
     from app.generation import _PROMPTS, _system_prompt
-    assert set(_PROMPTS) == {"generate", "verify", "triage"}
+    assert set(_PROMPTS) == {"generate", "verify", "triage", "research"}
     for name, path in _PROMPTS.items():
         assert path.exists(), f"prompt file missing: {path}"
         text = _system_prompt(name)
@@ -1077,3 +1077,30 @@ def test_target_size_drives_count_and_shortfall_reported():
                   follow_redirects=False)
     deck3 = int(r.headers["location"].split("created=")[1])
     assert db.query_one("SELECT target_questions FROM decks WHERE id=?", (deck3,))["target_questions"] == 50
+
+
+def test_topic_mode_research_doc_then_questions():
+    """P1-8/F4: bare topic -> kind='topic' source with generated research text,
+    normal pipeline runs on it, count driven by target, deck page discloses."""
+    c = TestClient(app)
+    c.post("/register", data={"email": "topic@example.com", "password": "password123"}, follow_redirects=False)
+    r = csrf_post(c, "/new", data={"title": "Quantum computing", "goal": "Understand qubits",
+                                   "topic_text": "Quantum computing", "source_mode": "topic",
+                                   "target": "20"}, follow_redirects=False)
+    assert r.status_code == 303, r.text[:300]
+    deck_id = int(r.headers["location"].split("created=")[1])
+    src = db.query_one("SELECT kind FROM sources s JOIN decks d ON d.source_id=s.id WHERE d.id=?", (deck_id,))
+    assert src["kind"] == "topic"
+    import time
+    for _ in range(120):
+        job = db.query_one("SELECT * FROM jobs WHERE deck_id=? ORDER BY rowid DESC LIMIT 1", (deck_id,))
+        if job and job["status"] in ("done", "failed"): break
+        time.sleep(0.25)
+    assert job["status"] == "done", job["error"]
+    n = db.query_one("SELECT COUNT(*) c FROM questions WHERE deck_id=?", (deck_id,))["c"]
+    assert 0 < n <= 20, n
+    src = db.query_one("SELECT raw_text FROM sources s JOIN decks d ON d.source_id=s.id WHERE d.id=?", (deck_id,))
+    assert "# Overview of" in src["raw_text"], "research doc not stored"
+    # deck page discloses generated-research grounding
+    page = c.get(f"/decks/{deck_id}")
+    assert "grounded in generated research" in page.text

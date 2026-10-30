@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from .providers import ChatResult
 
 
+def _rep(text: str, n: int = 30) -> str:
+    return (text + " ") * n
+
+
 @dataclass
 class MockProvider:
     """Deterministic stand-in for tests/dev. Detects the requested schema by content."""
@@ -12,7 +16,32 @@ class MockProvider:
     def chat(self, model: str, system: str, user: str, *, json_schema: dict | None = None,
              temperature: float = 0.2, max_tokens: int = 4096) -> ChatResult:
         schema_str = json.dumps(json_schema or {})
-        if "is_learning_material" in schema_str:
+        if "sections" in schema_str and "heading" in schema_str:
+            # research-document call for topic mode: deterministic multi-section doc
+            import re
+            m = re.search(r"TOPIC: (.+)", user)
+            topic = m.group(1).strip() if m else "the topic"
+            payload = {"sections": [
+                {"heading": f"Overview of {topic}",
+                 "body": _rep(f"{topic} is a domain with core concepts, definitions, and "
+                              f"relationships that learners must understand before applying them.")},
+                {"heading": f"Key facts about {topic}",
+                 "body": _rep(f"The most important facts about {topic} include its main "
+                              f"definitions, standard practitioner terminology, and the "
+                              f"foundational principles everything else builds on.")},
+                {"heading": f"How {topic} works",
+                 "body": _rep(f"At a high level, {topic} works through a small number of "
+                              f"mechanisms: inputs are processed by well-defined rules into "
+                              f"predictable outputs that can be reasoned about step by step.")},
+                {"heading": f"Common misconceptions about {topic}",
+                 "body": _rep(f"A frequent misconception is that {topic} is simpler than it is; "
+                              f"it has edge cases and interactions beginners often miss.")},
+                {"heading": f"Applying {topic}",
+                 "body": _rep(f"To apply {topic} effectively, start with core examples, check "
+                              f"understanding against realistic scenarios, and watch the "
+                              f"failure modes practitioners document.")},
+            ]}
+        elif "is_learning_material" in schema_str:
             import re
             n_excerpts = len(re.findall(r"^--- Excerpt \d+ ---", user, re.M))
             n = n_excerpts if n_excerpts else 1

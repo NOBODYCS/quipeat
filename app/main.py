@@ -358,6 +358,7 @@ async def new_source_form(request: Request):
 @app.post("/new")
 async def new_source(request: Request, title: str = Form(...), goal: str = Form(""),
                      url: str = Form(""), topic_text: str = Form(""),
+                     source_mode: str = Form("text"),
                      lang: str = Form("en"), level: str = Form(DEFAULT_LEVEL),
                      target: int = Form(DEFAULT_TARGET),
                      file: UploadFile | None = File(None)):
@@ -390,6 +391,11 @@ async def new_source(request: Request, title: str = Form(...), goal: str = Form(
         elif url:
             raw = ""
             kind, ref = "url", url
+        elif topic_text and source_mode == "topic":
+            # Topic mode: the text is a TOPIC NAME, not source material. The
+            # background job writes a research document on it first (kind='topic').
+            raw = ""
+            kind, ref = "topic", topic_text
         elif topic_text:
             raw = topic_text
             kind, ref = "text", None
@@ -402,7 +408,7 @@ async def new_source(request: Request, title: str = Form(...), goal: str = Form(
         else:
             key = "err_generic"
         return page(request, "new_source.html", error=translate(lang_of(request, user), key))
-    if kind != "url" and not raw.strip():
+    if kind not in ("url", "topic") and not raw.strip():
         return page(request, "new_source.html", error=translate(lang_of(request, user), "err_no_text"))
     if not goal:
         return page(request, "new_source.html", error=translate(lang_of(request, user), "err_no_goal"),
@@ -413,8 +419,9 @@ async def new_source(request: Request, title: str = Form(...), goal: str = Form(
     cur = db.execute("INSERT INTO sources(user_id, kind, title, original_ref, raw_text) VALUES (?, ?, ?, ?, ?)",
                      (user["id"], kind, title, ref, raw))
     source_id = cur.lastrowid
-    for idx, piece in enumerate(chunk_text(raw)):
-        db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)", (source_id, idx, piece))
+    if kind != "topic":  # topic sources are chunked by the job after the research doc is written
+        for idx, piece in enumerate(chunk_text(raw)):
+            db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)", (source_id, idx, piece))
     cur = db.execute("INSERT INTO decks(user_id, source_id, title, goal, lang, level, target_questions)"
                      " VALUES (?, ?, ?, ?, ?, ?, ?)",
                      (user["id"], source_id, title, goal, lang, level, target))

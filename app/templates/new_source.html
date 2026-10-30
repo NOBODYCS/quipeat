@@ -15,13 +15,15 @@
       <textarea id="goal" name="goal" rows="3" required
                 placeholder="{{ t("goal_ph") }}" class="input">{% if goal %}{{ goal }}{% endif %}</textarea>
     </div>
-    <div role="tablist" aria-label="{{ t('source') }}" class="grid grid-cols-3 gap-1 rounded-xl bg-ink-900 border border-ink-700 p-1">
+    <div role="tablist" aria-label="{{ t('source') }}" class="grid grid-cols-4 gap-1 rounded-xl bg-ink-900 border border-ink-700 p-1">
       <button type="button" role="tab" aria-selected="true" data-src-tab="file" class="src-tab rounded-lg px-3 py-2 text-sm font-bold">
         <svg class="inline h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0-12 4 4m-4-4L8 7"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>{{ t("source_kind_file") }}</button>
       <button type="button" role="tab" aria-selected="false" data-src-tab="url" class="src-tab rounded-lg px-3 py-2 text-sm font-bold">
         <svg class="inline h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7L12.5 18.5"/></svg>{{ t("source_kind_url") }}</button>
       <button type="button" role="tab" aria-selected="false" data-src-tab="text" class="src-tab rounded-lg px-3 py-2 text-sm font-bold">
-        <svg class="inline h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>{{ t("source_topic") }}</button>
+        <svg class="inline h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>{{ t("source_kind_text") }}</button>
+      <button type="button" role="tab" aria-selected="false" data-src-tab="topic" class="src-tab rounded-lg px-3 py-2 text-sm font-bold">
+        <svg class="inline h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 5 .5c0 1.5-2.5 2-2.5 3.5"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg>{{ t("source_kind_topic") }}</button>
     </div>
     <div data-src-panel="file">
       <label for="file" class="label">{{ t("upload_label") }}</label>
@@ -35,6 +37,12 @@
     <div data-src-panel="text" class="hidden">
       <label for="topic_text" class="label">{{ t("text_label") }}</label>
       <textarea id="topic_text" name="topic_text" rows="6" placeholder="{{ t("text_ph") }}" class="input"></textarea>
+    </div>
+    <div data-src-panel="topic" class="hidden">
+      <label for="topic_text" class="label">{{ t("topic_only_label") }}</label>
+      <textarea id="topic_text" name="topic_text" rows="3" placeholder="{{ t("topic_only_ph") }}" class="input"></textarea>
+      <input type="hidden" name="source_mode" id="source_mode" value="text">
+      <p class="mt-1 text-xs text-mist-400">{{ t("topic_only_hint") }}</p>
     </div>
     <div>
       <label for="lang" class="label">{{ t("lang_label") }}</label>
@@ -74,6 +82,8 @@
       document.querySelectorAll('[data-src-panel]').forEach(function (p) {
         p.classList.toggle('hidden', p.getAttribute('data-src-panel') !== tab.getAttribute('data-src-tab'));
       });
+      var mode = document.getElementById('source_mode');
+      if (mode) mode.value = tab.getAttribute('data-src-tab') === 'topic' ? 'topic' : 'text';
     });
   });
   document.querySelector('.src-tab').click();

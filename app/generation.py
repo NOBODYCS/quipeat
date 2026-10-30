@@ -83,6 +83,7 @@ _PROMPTS = {
     "generate": Path(__file__).parent / "prompts" / f"generate_{PROMPT_VERSION}.md",
     "verify": Path(__file__).parent / "prompts" / f"verify_{PROMPT_VERSION}.md",
     "triage": Path(__file__).parent / "prompts" / f"triage_{PROMPT_VERSION}.md",
+    "research": Path(__file__).parent / "prompts" / f"research_{PROMPT_VERSION}.md",
 }
 
 
@@ -117,6 +118,19 @@ class VerifyItem(BaseModel):
 
 class VerifyResponse(BaseModel):
     results: list[VerifyItem]
+
+
+class ResearchSection(BaseModel):
+    heading: str = Field(min_length=2, max_length=120)
+    body: str = Field(min_length=20)
+
+
+class ResearchDoc(BaseModel):
+    sections: list[ResearchSection] = Field(min_length=3, max_length=40)
+
+
+def _render_research_doc(doc: ResearchDoc) -> str:
+    return "\n\n".join(f"# {s.heading}\n\n{s.body}" for s in doc.sections)
 
 
 def _system_prompt(name: str) -> str:
@@ -314,6 +328,42 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
     # per-chunk density derives from the target; recomputed after chunking below
     questions_per_chunk = min(MAX_QUESTIONS_PER_CHUNK, max(1, -(-target_questions // 2)))
     max_passes = 1
+
+    # Topic sources: the LLM first writes a structured research document on the
+    # topic from its own knowledge; that document becomes the source text, so
+    # grounding + critic still apply to it. Stored as kind='topic'.
+    if deck["source_kind"] == "topic":
+        db.execute("UPDATE jobs SET status='running', total=0, started_at=datetime('now'),"
+                   " stage='research', message='Writing research document on the topic…' WHERE id=?", (job_id,))
+        log.info("[job %s] topic mode: writing research doc for %r", job_id, goal[:120])
+        try:
+            provider, model = _get_provider(user_id)
+            research_msg = (
+                f"TOPIC: {deck['title']}\nLEARNING GOAL: {goal}\n\n"
+                f"Write a structured research document on this topic."
+                + _lang_instruction(gen_lang)
+            )
+            doc, _ = structured_call(provider, model, _system_prompt("research"),
+                                     research_msg, ResearchDoc, temperature=0.4,
+                                     max_tokens=8192)
+            raw = _render_research_doc(doc)
+            db.execute("UPDATE sources SET raw_text=? WHERE id=?", (raw, deck["source_id"]))
+            for idx, piece in enumerate(chunk_text(raw)):
+                db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)",
+                           (deck["source_id"], idx, piece))
+            log.info("[job %s] research doc: %s words, %s chunks", job_id,
+                     len(raw.split()), len(chunk_text(raw)))
+        except Exception as e:
+            log.error("[job %s] research step failed: %s: %s", job_id, type(e).__name__, e)
+            db.execute("UPDATE jobs SET status='failed', error=?, finished_at=datetime('now') WHERE id=?",
+                       (f"Could not write the research document: {str(e)[:200]}", job_id))
+            db.execute("UPDATE decks SET status='failed' WHERE id=?", (deck_id,))
+            return
+        chunks = db.query("SELECT * FROM chunks WHERE source_id = ? ORDER BY idx",
+                          (deck["source_id"],))
+        n_chunks = max(1, len(chunks))
+        questions_per_chunk = min(MAX_QUESTIONS_PER_CHUNK, max(1, -(-target_questions // n_chunks)))
+        max_passes = MAX_PASSES_PER_CHUNK if target_questions > n_chunks * MAX_QUESTIONS_PER_CHUNK else 1
 
     # URL sources: crawl now (in the background), store text + chunks.
     # The POST returned immediately; the job bar polls for progress.
