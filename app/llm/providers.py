@@ -82,7 +82,10 @@ class MistralProvider(BaseProvider):
             "max_tokens": max_tokens,
         }
         if json_schema is not None:
-            payload["response_format"] = {"type": "json_schema", "json_schema": json_schema}
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "response", "strict": True, "schema": json_schema},
+            }
         try:
             with httpx.Client(timeout=120) as client:
                 resp = client.post(

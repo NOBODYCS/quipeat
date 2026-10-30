@@ -109,8 +109,7 @@ def _crawl4ai_extract(url: str, max_pages: int) -> str:
         page_timeout=60000,
         excluded_tags=["nav", "footer", "header", "aside"],
         markdown_generator=DefaultMarkdownGenerator(
-            content_filter=PruningContentFilter(
-                threshold=0.48, threshold_type="fixed", min_ignore_threshold=0)),
+            content_filter=PruningContentFilter(threshold=0.48, threshold_type="fixed")),
         deep_crawl_strategy=BFSDeepCrawlStrategy(
             max_depth=2, include_external=False, max_pages=max_pages),
         stream=False,

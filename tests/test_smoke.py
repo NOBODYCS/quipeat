@@ -365,3 +365,32 @@ def test_topic_triage_handles_unicode_titles():
     pl_text = "Konfiguracja playbooków w Ansible opiera się na plikach YAML " * 10
     en_filler = "Please contribute by opening a pull request on GitHub " * 10
     assert _topic_score(pl_text, terms) > _topic_score(en_filler, terms)
+
+
+def test_mistral_provider_sends_named_json_schema(monkeypatch):
+    """Mistral's API rejects response_format.json_schema without a name (422)."""
+    from app.llm.providers import MistralProvider
+
+    captured = {}
+
+    class FakeResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content": "{}"}}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+
+    def fake_post(url, headers=None, json=None):
+        captured["payload"] = json
+        return FakeResp()
+
+    monkeypatch.setattr("app.llm.providers.httpx.Client", lambda **kw: type(
+        "C", (), {"__enter__": lambda s: s, "__exit__": lambda s, *a: None,
+                  "post": lambda self, url, **kw: fake_post(url, **kw)})())
+    p = MistralProvider("test-key")
+    p.chat("mistral-large-latest", "sys", "user", json_schema={"type": "object"})
+    rf = captured["payload"]["response_format"]
+    assert rf["json_schema"]["name"] == "response"
+    assert rf["json_schema"]["strict"] is True
+    assert rf["json_schema"]["schema"] == {"type": "object"}
