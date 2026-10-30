@@ -45,12 +45,14 @@
     <p class="text-mist-400 text-sm mb-4"><b>🎯 {{ t("nav_study") }}</b>: {{ t("onb3_b") }}</p>
     {% if replay %}
     <form method="post" action="/onboarding/finish">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="replay" value="1">
       <button class="btn-primary w-full">{{ t("done") }}</button>
     </form>
     {% else %}
     <p class="text-sm text-mist-400 mb-4">{{ t("onb_last") }}</p>
     <form method="post" action="/onboarding/finish">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
       <button class="btn-primary w-full">{{ t("go_to_settings") }}</button>
     </form>
     {% endif %}

@@ -5,6 +5,7 @@
   <h1 class="text-2xl font-extrabold mb-6">{{ t("new_title") }}</h1>
   {% if error %}<div class="alert-error" role="alert">{{ error }}</div>{% endif %}
   <form method="post" action="/new" enctype="multipart/form-data" class="card p-5 space-y-5">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
     <div>
       <label for="title" class="label">{{ t("deck_title_label") }}</label>
       <input id="title" name="title" type="text" value="{{ title or '' }}" placeholder="{{ t("deck_title_ph") }}" class="input">

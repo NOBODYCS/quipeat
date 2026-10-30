@@ -11,6 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/app.css">
   <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
+  <meta name="csrf-token" content="{{ csrf }}">
 </head>
 <body class="h-full text-mist-100 antialiased font-sans">
   {% if user %}
@@ -32,12 +33,14 @@
         {% if user.role == 'admin' %}<span class="chip chip-volt hidden sm:inline-flex">admin</span>{% endif %}
         <a href="/new" class="btn-primary btn-sm shrink-0 hidden sm:inline-flex"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> {{ t("nav_new") }}</a>
         <form method="post" action="/settings/lang">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
           <input type="hidden" name="lang" value="{{ 'pl' if lang == 'en' else 'en' }}">
           <button class="iconbtn" title="{{ t('site_language') }}" aria-label="{{ t('site_language') }}">{{ '🇵🇱' if lang == 'en' else '🇬🇧' }}</button>
         </form>
         <a href="/onboarding?replay=1" class="iconbtn hidden sm:grid" title="{{ t('replay_tutorial') }}" aria-label="{{ t('replay_tutorial') }}"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.3a2.6 2.6 0 0 1 5.1.7c0 1.7-2.4 2.2-2.4 3.5"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg></a>
         <a href="/settings" class="iconbtn" title="{{ t('nav_settings') }}" aria-label="{{ t('nav_settings') }}"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.5a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.4 2.4h4l.4-2.4a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg></a>
         <form method="post" action="/logout">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
           <button class="iconbtn" title="{{ t('nav_logout') }}" aria-label="{{ t('nav_logout') }}" onclick="return confirm('{{ t('confirm_logout') }}')"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg></button>
         </form>
       </div>
@@ -95,6 +98,12 @@
   </nav>
   {% endif %}
 <script>
+  // Attach the session CSRF token to every htmx POST (htmx forms get the
+  // header instead of a hidden input).
+  document.body.addEventListener('htmx:configRequest', function (e) {
+    var t = document.querySelector('meta[name="csrf-token"]');
+    if (t) e.detail.headers['X-CSRF-Token'] = t.content;
+  });
   document.addEventListener('submit', function (e) {
     var b = e.target.querySelector('button[type="submit"], button:not([type])');
     if (b && !b.disabled) { b.disabled = true; b.classList.add('loading'); }

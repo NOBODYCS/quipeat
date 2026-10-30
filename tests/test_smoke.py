@@ -25,6 +25,20 @@ db.init_db()
 client = TestClient(app)
 
 
+def csrf_post(c, url, data=None, files=None, **kw):
+    """POST with the session CSRF token (mimics the hidden form input)."""
+    import re as _re
+    page = c.get("/decks")
+    m = _re.search(r'name="csrf-token" content="([0-9a-f]+)"', page.text)
+    tok = m.group(1) if m else ""
+    data = dict(data or {})
+    data["csrf"] = tok
+    if files is not None:
+        return c.post(url, data=data, files=files, **kw)
+    return c.post(url, data=data, **kw)
+
+
+
 def test_register_login_and_full_flow():
     r = client.post("/register", data={"email": "a@b.c", "password": "password123",
                                        "display_name": "A"}, follow_redirects=False)
@@ -33,7 +47,7 @@ def test_register_login_and_full_flow():
     r = client.get("/decks")
     assert r.status_code == 200 and "Your decks" in r.text
 
-    r = client.post("/new", data={"title": "Bio", "goal": "Understand photosynthesis basics", "topic_text": "Photosynthesis converts light into glucose. " * 60},
+    r = csrf_post(client, "/new", data={"title": "Bio", "goal": "Understand photosynthesis basics", "topic_text": "Photosynthesis converts light into glucose. " * 60},
                     follow_redirects=False)
     assert r.status_code == 303, r.text[:500]
     deck_id = int(r.headers["location"].split("created=")[1])
@@ -49,11 +63,11 @@ def test_register_login_and_full_flow():
     assert len(qs) >= 2
 
     q = qs[0]
-    r = client.post(f"/study/{deck_id}/answer",
+    r = csrf_post(client, f"/study/{deck_id}/answer",
                     data={"question_id": q["id"], "choice": q["correct_index"]})
     assert r.status_code == 200 and "Good" in r.text  # result + continue buttons
     assert "XP" in r.text and "flag" in r.text  # xp preview + inline flag control
-    r = client.post(f"/study/{deck_id}/rate",
+    r = csrf_post(client, f"/study/{deck_id}/rate",
                     data={"question_id": q["id"], "choice": q["correct_index"], "rating": "good"})
     assert r.status_code == 200  # grades + returns next card (or session end redirect)
 
@@ -147,7 +161,7 @@ def test_url_crawl_concatenates_pages(monkeypatch):
 
 
 def test_new_source_saves_level():
-    r = client.post("/new", data={"title": "Lv", "goal": "Learn Kubernetes orchestration", "topic_text": "Kubernetes orchestrates containers. " * 60,
+    r = csrf_post(client, "/new", data={"title": "Lv", "goal": "Learn Kubernetes orchestration", "topic_text": "Kubernetes orchestrates containers. " * 60,
                                   "level": "thorough"}, follow_redirects=False)
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
@@ -174,7 +188,7 @@ def test_url_source_crawls_in_background(monkeypatch):
 
     monkeypatch.setattr(ingest, "_fetch", fake_fetch)
 
-    r = client.post("/new", data={"title": "Url", "goal": "Learn background crawling", "url": "https://example.com/",
+    r = csrf_post(client, "/new", data={"title": "Url", "goal": "Learn background crawling", "url": "https://example.com/",
                                   "level": "standard"}, follow_redirects=False)
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
@@ -204,7 +218,7 @@ def test_url_source_challenge_fails_job(monkeypatch):
 
     monkeypatch.setattr(ingest, "_fetch", fake_fetch)
 
-    r = client.post("/new", data={"title": "Blk", "goal": "Learn blocked pages handling", "url": "https://example.com/",
+    r = csrf_post(client, "/new", data={"title": "Blk", "goal": "Learn blocked pages handling", "url": "https://example.com/",
                                   "level": "standard"}, follow_redirects=False)
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
@@ -294,7 +308,7 @@ def test_generation_prompt_is_topic_aware():
     orig = generation._get_provider
     generation._get_provider = lambda user_id: (SpyProvider(), "mock-model")
     try:
-        r = client.post("/new", data={"title": "Ansible fundamentals", "goal": "Run Ansible playbooks",
+        r = csrf_post(client, "/new", data={"title": "Ansible fundamentals", "goal": "Run Ansible playbooks",
                                       "topic_text": "Ansible playbooks run tasks in order. " * 60},
                         follow_redirects=False)
         assert r.status_code == 303
@@ -337,7 +351,7 @@ def test_triaged_sampling_end_to_end():
               "License: GPLv3. Changelog for release 2.15: minor fixes. ") * 20
 
     big_text = (relevant + " " + filler) * 40
-    r = client.post("/new", data={"title": "Ansible", "goal": "Use Ansible for automation", "topic_text": big_text,
+    r = csrf_post(client, "/new", data={"title": "Ansible", "goal": "Use Ansible for automation", "topic_text": big_text,
                                   "level": "quick"}, follow_redirects=False)
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
@@ -463,7 +477,7 @@ def test_semantic_triage_drops_non_learning_chunks(monkeypatch):
     mixed = ("Ansible playbooks define tasks in YAML against an inventory. "
              "To contribute a new module, open a pull request following the contributor "
              "path and changelog fragment process. ") * 40
-    r = client.post("/new", data={"title": "Ansible", "goal": "Use Ansible playbooks", "topic_text": mixed,
+    r = csrf_post(client, "/new", data={"title": "Ansible", "goal": "Use Ansible playbooks", "topic_text": mixed,
                                   "level": "quick"}, follow_redirects=False)
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
@@ -485,12 +499,12 @@ def test_semantic_triage_drops_non_learning_chunks(monkeypatch):
 def test_goal_is_required_and_persisted():
     client.post("/register", data={"email": "goal1@b.c", "password": "password123",
                                    "display_name": "G1"}, follow_redirects=False)
-    r = client.post("/new", data={"title": "NoGoal", "topic_text": "Some content. " * 60},
+    r = csrf_post(client, "/new", data={"title": "NoGoal", "topic_text": "Some content. " * 60},
                     follow_redirects=False)
     assert r.status_code == 200
     assert "what you want to learn" in r.text.lower()
 
-    r = client.post("/new", data={"title": "WithGoal", "goal": "Master inventory basics",
+    r = csrf_post(client, "/new", data={"title": "WithGoal", "goal": "Master inventory basics",
                                   "topic_text": "Ansible inventory hosts and groups. " * 60},
                     follow_redirects=False)
     assert r.status_code == 303
@@ -528,7 +542,7 @@ def test_triage_prompt_is_sent_to_lld(monkeypatch):
     try:
         client.post("/register", data={"email": "triage@b.c", "password": "password123",
                                        "display_name": "T"}, follow_redirects=False)
-        r = client.post("/new", data={"title": "T", "goal": "Use Ansible playbooks",
+        r = csrf_post(client, "/new", data={"title": "T", "goal": "Use Ansible playbooks",
                                       "topic_text": "Ansible playbooks run tasks. " * 400},
                         follow_redirects=False)
         assert r.status_code == 303
@@ -552,7 +566,7 @@ def test_admin_panel_shows_diagnostics_and_job_events():
                                    "display_name": "AT"}, follow_redirects=False)
     db.execute("UPDATE users SET role='admin' WHERE email='admintest@b.c'")
 
-    r = client.post("/new", data={"title": "Obs", "goal": "Learn observability",
+    r = csrf_post(client, "/new", data={"title": "Obs", "goal": "Learn observability",
                                   "topic_text": "Observability needs logs metrics traces. " * 60},
                     follow_redirects=False)
     assert r.status_code == 303
@@ -596,12 +610,12 @@ def test_file_upload_and_topic_decks_generate():
 
     files = {"file": ("notes.txt", io.BytesIO(
         b"Ansible playbooks automate server configuration with YAML tasks. " * 60), "text/plain")}
-    r = client.post("/new", data={"title": "FileDeck", "goal": "Learn file ingestion",
+    r = csrf_post(client, "/new", data={"title": "FileDeck", "goal": "Learn file ingestion",
                                    "level": "quick"}, files=files, follow_redirects=False)
     assert r.status_code == 303, r.text[:300]
     file_deck = int(r.headers["location"].split("created=")[1])
 
-    r = client.post("/new", data={"title": "TopicDeck", "goal": "Learn topic ingestion",
+    r = csrf_post(client, "/new", data={"title": "TopicDeck", "goal": "Learn topic ingestion",
                                   "topic_text": "Kubernetes pods are scheduled onto nodes. " * 80},
                     follow_redirects=False)
     assert r.status_code == 303, r.text[:300]
@@ -633,7 +647,7 @@ def test_job_events_pruned_and_regenerate_text_deck():
     client.post("/register", data={"email": "prune@b.c", "password": "password123",
                                    "display_name": "P"}, follow_redirects=False)
 
-    r = client.post("/new", data={"title": "Prune", "goal": "Learn pruning",
+    r = csrf_post(client, "/new", data={"title": "Prune", "goal": "Learn pruning",
                                   "topic_text": "Pruning keeps storage bounded over time. " * 60},
                     follow_redirects=False)
     assert r.status_code == 303
@@ -658,7 +672,7 @@ def test_job_events_pruned_and_regenerate_text_deck():
     assert live
 
     # regen the text deck: chunks must be rebuilt, questions must regenerate
-    r = client.post(f"/decks/{deck_id}/regen", follow_redirects=False)
+    r = csrf_post(client, f"/decks/{deck_id}/regen", follow_redirects=False)
     assert r.status_code == 303
     for _ in range(60):
         unfinished = db.query(
@@ -673,7 +687,7 @@ def test_job_events_pruned_and_regenerate_text_deck():
     assert qs["n"] > 0, "regen produced no questions for a text deck"
 
     # deck delete removes its job events (no orphans)
-    client.post(f"/decks/{deck_id}/delete", follow_redirects=False)
+    csrf_post(client, f"/decks/{deck_id}/delete", follow_redirects=False)
     leftover = db.query_one("SELECT 1 FROM job_events WHERE job_id = ?", (job["id"],))
     assert leftover is None
 
@@ -685,7 +699,7 @@ def test_restart_recovery_and_bounded_concurrency():
 
     client.post("/register", data={"email": "recover@b.c", "password": "password123",
                                    "display_name": "RV"}, follow_redirects=False)
-    r = client.post("/new", data={"title": "Stuck", "goal": "Learn recovery",
+    r = csrf_post(client, "/new", data={"title": "Stuck", "goal": "Learn recovery",
                                   "topic_text": "Recovery handles interrupted jobs. " * 60},
                     follow_redirects=False)
     assert r.status_code == 303
@@ -718,7 +732,7 @@ def test_restart_recovery_and_bounded_concurrency():
     assert _get_executor() is ex  # reused, not per-call
 
     # after recovery, regen works on the reset deck
-    r = client.post(f"/decks/{deck_id}/regen", follow_redirects=False)
+    r = csrf_post(client, f"/decks/{deck_id}/regen", follow_redirects=False)
     assert r.status_code == 303
     import time
     for _ in range(60):
@@ -739,7 +753,7 @@ def _register_and_deck(email, title="Sec deck"):
     r = c.post("/register", data={"email": email, "password": "password123",
                                    "display_name": email.split("@")[0]}, follow_redirects=False)
     assert r.status_code == 303
-    r = c.post("/new", data={"title": title, "goal": "goal", "topic_text": "Mitochondria produce ATP. " * 60},
+    r = csrf_post(c, "/new", data={"title": title, "goal": "goal", "topic_text": "Mitochondria produce ATP. " * 60},
                follow_redirects=False)
     assert r.status_code == 303, r.text[:300]
     deck_id = int(r.headers["location"].split("created=")[1])
@@ -766,16 +780,16 @@ def test_cross_user_access_denied():
     assert r.status_code == 303 and r.headers["location"] == "/decks"
     assert "Mitochondria" not in r.text
 
-    r = other.post(f"/study/{deck_id}/answer",
+    r = csrf_post(other, f"/study/{deck_id}/answer",
                    data={"question_id": q["id"], "choice": q["correct_index"]}, follow_redirects=False)
     assert r.status_code == 303
-    r = other.post(f"/study/{deck_id}/rate",
+    r = csrf_post(other, f"/study/{deck_id}/rate",
                    data={"question_id": q["id"], "choice": q["correct_index"], "rating": "easy"},
                    follow_redirects=False)
     assert r.status_code == 303
     assert db.query_one("SELECT COUNT(*) c FROM reviews WHERE question_id = ?", (q["id"],))["c"] == 0
     before = dict(db.query_one("SELECT due_at, reps FROM questions WHERE id = ?", (q["id"],)))
-    r = other.post(f"/questions/{q['id']}/flag", follow_redirects=False)
+    r = csrf_post(other, f"/questions/{q['id']}/flag", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/decks"
     assert db.query_one("SELECT flagged FROM questions WHERE id = ?", (q["id"],))["flagged"] == 0
     after = dict(db.query_one("SELECT due_at, reps FROM questions WHERE id = ?", (q["id"],)))
@@ -785,7 +799,7 @@ def test_cross_user_access_denied():
 def test_flag_without_referer_redirects_safely():
     """B7: flag with no/invalid referer must not produce a relative '?flagged=1' URL."""
     c, deck_id, q = _register_and_deck("flagger@example.com")
-    r = c.post(f"/questions/{q['id']}/flag", headers={"referer": ""}, follow_redirects=False)
+    r = csrf_post(c, f"/questions/{q['id']}/flag", headers={"referer": ""}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"].startswith("/")
     assert db.query_one("SELECT flagged FROM questions WHERE id = ?", (q["id"],))["flagged"] == 1
 
@@ -812,7 +826,7 @@ def test_due_at_format_matches_sqlite_now():
 def test_rated_card_becomes_due_again():
     """B1 end-to-end: after rating 'again', the card is due per SQL and /study serves it."""
     c, deck_id, q = _register_and_deck("due@example.com")
-    r = c.post(f"/study/{deck_id}/rate",
+    r = csrf_post(c, f"/study/{deck_id}/rate",
                data={"question_id": q["id"], "choice": q["correct_index"], "rating": "good"},
                follow_redirects=False)
     assert r.status_code in (200, 303)
@@ -831,7 +845,7 @@ def test_upload_filename_path_traversal_sanitized():
     """B5: a malicious upload filename must not escape the upload dir."""
     c, _, _ = _register_and_deck("up@example.com")
     evil = b"hello traversal"
-    r = c.post("/new", data={"title": "T", "goal": "g"},
+    r = csrf_post(c, "/new", data={"title": "T", "goal": "g"},
                files={"file": ("../../../tmp/evil_quipeat.txt", evil, "text/plain")},
                follow_redirects=False)
     assert r.status_code == 303, r.text[:300]
@@ -850,3 +864,29 @@ def test_default_secret_key_refused_outside_mock(monkeypatch):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     with _pytest.raises(RuntimeError):
         validate_secrets()
+
+
+def test_csrf_enforced_on_state_changing_posts():
+    """E2: POSTs without a valid session-bound CSRF token are rejected (403),
+    except the pre-auth login/register endpoints."""
+    c, deck_id, q = _register_and_deck("csrf@example.com")
+    # read a page to get the csrf meta value
+    page = c.get("/decks")
+    import re as _re
+    m = _re.search(r'name="csrf-token" content="([0-9a-f]+)"', page.text)
+    assert m, "csrf meta tag present"
+    tok = m.group(1)
+    # missing token -> 403
+    r = c.post(f"/decks/{deck_id}/delete", follow_redirects=False)
+    assert r.status_code == 403
+    # wrong token -> 403
+    r = c.post(f"/decks/{deck_id}/delete", data={"csrf": "0" * 64}, follow_redirects=False)
+    assert r.status_code == 403
+    # correct token -> allowed (303)
+    r = csrf_post(c, f"/decks/{deck_id}/delete", data={"csrf": tok}, follow_redirects=False)
+    assert r.status_code == 303
+    # login/register stay open pre-auth
+    c2 = TestClient(app)
+    r = c2.post("/login", data={"email": "csrf@example.com", "password": "password123"},
+                follow_redirects=False)
+    assert r.status_code in (200, 303)

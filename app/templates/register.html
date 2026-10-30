@@ -3,6 +3,7 @@
 {% block content %}
 <div class="relative mx-auto max-w-sm mt-8 md:mt-16">  <div class="absolute top-3 right-3">
     <form method="post" action="/settings/lang">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="lang" value="{{ 'pl' if lang == 'en' else 'en' }}">
       <button class="iconbtn !h-8 !w-8 !border-0 !bg-transparent text-lg" title="{{ t('site_language') }}" aria-label="{{ t('site_language') }}">{{ '🇵🇱' if lang == 'en' else '🇬🇧' }}</button>
     </form>
@@ -18,6 +19,7 @@
     </div>
     {% if error %}<div class="alert-error" role="alert">{{ error }}</div>{% endif %}
     <form method="post" action="/register" class="space-y-4">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
       <div>
         <label for="display_name" class="label">{{ t("display_name") }}</label>
         <input id="display_name" name="display_name" type="text" autocomplete="nickname" class="input">

@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -76,3 +77,11 @@ def mask_key(key: str) -> str:
     if len(key) <= 8:
         return "****"
     return f"{key[:4]}…{key[-4:]}"
+
+
+def csrf_token(session_token: str) -> str:
+    """CSRF token bound to the session token: forms/JS submit it back and the
+    middleware verifies it with the same HMAC, so a cross-site page (which can
+    send cookies but cannot read them) cannot forge it."""
+    return hmac.new(settings.secret_key.encode(), ("csrf|" + session_token).encode(),
+                    hashlib.sha256).hexdigest()

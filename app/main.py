@@ -1,3 +1,4 @@
+import hmac
 import json
 import logging
 import secrets
@@ -16,7 +17,7 @@ from .i18n import LANGS, STRINGS, translate
 from .generation import start_generation
 from .ingest import chunk_text, extract_text_from_file, extract_text_from_url, IngestError
 from .llm.providers import DEFAULT_MODELS
-from .security import (create_session, decrypt_secret, delete_session, encrypt_secret,
+from .security import (create_session, csrf_token, decrypt_secret, delete_session, encrypt_secret,
                        get_session_user, hash_password, mask_key, verify_password)
 
 BASE_DIR = Path(__file__).parent.parent
@@ -30,6 +31,41 @@ log = logging.getLogger("quipeat.main")
 
 app = FastAPI(title="Quipeat")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
+
+# Anonymous POSTs that must stay open pre-auth (login/register/passkey ceremony).
+_CSRF_EXEMPT_POSTS = {"/login", "/register", "/passkeys/login", "/passkeys/login-options"}
+
+
+@app.middleware("http")
+async def _csrf_guard(request: Request, call_next):
+    """Reject state-changing requests whose CSRF token (form field `csrf` or
+    `X-CSRF-Token` header) does not match the session-bound HMAC."""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        if request.url.path not in _CSRF_EXEMPT_POSTS:
+            token = request.cookies.get("quipeat_session")
+            if token:
+                expected = csrf_token(token)
+                supplied = request.headers.get("x-csrf-token", "")
+                if not supplied and "form" in request.headers.get("content-type", ""):
+                    # Parse the body ourselves and stash it in request._form;
+                    # FastAPI's route handling reuses request._form when set.
+                    body = await request.body()
+                    from starlette.formparsers import FormParser, MultiPartParser, parse_options_header
+                    from urllib.parse import parse_qsl
+                    ct, _ = parse_options_header(request.headers.get("Content-Type"))
+                    if ct == b"multipart/form-data":
+                        async def _mp():
+                            yield body
+                        request._form = await MultiPartParser(request.headers, _mp()).parse()
+                    elif ct == b"application/x-www-form-urlencoded":
+                        from starlette.datastructures import FormData
+                        request._form = FormData(parse_qsl(body.decode("utf-8", "replace"), keep_blank_values=True))
+                    request._body = body
+                    supplied = (request._form or {}).get("csrf", "")
+                if not hmac.compare_digest(supplied, expected):
+                    log.warning("CSRF rejected: %s %s", request.method, request.url.path)
+                    return Response("CSRF token missing or invalid", status_code=403)
+    return await call_next(request)
 
 
 @app.on_event("startup")
@@ -123,6 +159,8 @@ def page(request: Request, template: str, **ctx) -> HTMLResponse:
     ctx.setdefault("levels", LEVELS)
     ctx.setdefault("default_level", DEFAULT_LEVEL)
     ctx.setdefault("t", lambda k: translate(lang, k))
+    sess_token = request.cookies.get("quipeat_session")
+    ctx.setdefault("csrf", csrf_token(sess_token) if sess_token else "")
     if user:
         from .fsrs import level_progress
         lvl, into, need = level_progress(user["xp_total"])
