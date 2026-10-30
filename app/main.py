@@ -69,6 +69,20 @@ def page(request: Request, template: str, **ctx) -> HTMLResponse:
     ctx.setdefault("lang", lang)
     ctx.setdefault("langs", LANGS)
     ctx.setdefault("t", lambda k: translate(lang, k))
+    if user:
+        from .fsrs import level_progress
+        lvl, into, need = level_progress(user["xp_total"])
+        rev = db.query_one("SELECT COUNT(*) c, COALESCE(SUM(correct),0) ok FROM reviews WHERE user_id = ?", (user["id"],))
+        badges = db.query("SELECT badge FROM user_badges WHERE user_id = ? ORDER BY awarded_at DESC LIMIT 5", (user["id"],))
+        ctx.setdefault("sidebar", {
+            "level": lvl, "xp_into": into, "xp_need": need,
+            "pct": min(100, round(100 * into / need)) if need else 100,
+            "streak": user["streak_days"],
+            "reviews": rev["c"],
+            "accuracy": round(100 * rev["ok"] / rev["c"], 1) if rev["c"] else None,
+            "badges": badges, "badge_total": db.query_one(
+                "SELECT COUNT(*) c FROM user_badges WHERE user_id = ?", (user["id"],))["c"],
+        })
     return templates.TemplateResponse(request, template, ctx)
 
 
@@ -351,7 +365,7 @@ async def stats(request: Request):
         "SELECT DATE(reviewed_at) d, COUNT(*) c FROM reviews WHERE user_id = ?"
         " GROUP BY d ORDER BY d DESC LIMIT 14", (user["id"],))
     return page(request, "stats.html", total_q=total_q, total_r=total_r, accuracy=acc or 0,
-                badges=badges, recent=recent, all_badges=gamify.BADGES)
+                badges=badges, recent=recent, all_badges=list(gamify.BADGES))
 
 
 # ---------- admin ----------

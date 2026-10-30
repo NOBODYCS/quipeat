@@ -62,3 +62,11 @@ def level_for(xp: int) -> int:
     while xp >= int((level + 1) ** 1.6 * 100):
         level += 1
     return level
+
+
+def level_progress(xp: int) -> tuple[int, int, int]:
+    """(level, xp_into_level, xp_needed_for_next_level)"""
+    level = level_for(xp)
+    cur = int(level ** 1.6 * 100)
+    nxt = int((level + 1) ** 1.6 * 100)
+    return level, xp - cur, nxt - cur

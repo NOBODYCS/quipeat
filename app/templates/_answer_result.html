@@ -6,9 +6,19 @@
       </span>
       <span class="text-sm text-amber-300">+{{ xp }} XP</span>
     </div>
+<style>
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 76px; z-index: 40;
+           background: #1f232d; border: 1px solid #c8f04a55; color: #e2e8f0; font-size: 13px; font-weight: 700;
+           padding: 10px 16px; border-radius: 999px; box-shadow: 0 12px 32px rgba(0,0,0,.5);
+           animation: toast-in .25s ease-out; }
+  @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+</style>
+<script>
+  document.querySelectorAll('.toast').forEach(function (el) { setTimeout(function () { el.style.transition = 'opacity .5s'; el.style.opacity = '0'; setTimeout(function(){ el.remove(); }, 500); }, 2600); });
+</script>
     <p class="text-sm text-slate-300 mb-4">{{ explanation }}</p>
-    {% if award.leveled_up %}<p class="mb-2 rounded-lg bg-amber-900/40 border border-amber-700 px-3 py-2 text-sm text-amber-200">🎉 {{ t("level_up") }} {{ award.level }}.</p>{% endif %}
-    {% if activity.new_badges %}<p class="mb-2 text-sm text-emerald-300">🏅 {{ t("new_badge") }}</p>{% endif %}
+        {% if award.leveled_up %}<div class="toast md:hidden" id="toast-level">🎉 {{ t("toast_level_up") }} {{ award.level }}!</div>{% endif %}
+    {% if badges %}<div class="toast md:hidden" id="toast-badge">🏅 {% set names = [] %}{% for b in badges %}{% set _ = names.append(t("badge_" ~ b)) %}{% endfor %}{{ t("toast_badge") }}: {{ names | join(", ") }}</div>{% endif %}
     <div class="flex gap-2 mt-4">
       <a href="/study/{{ deck_id }}" class="flex-1 text-center rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold py-2 text-sm">{{ t("next_question") }}</a>
     </div>

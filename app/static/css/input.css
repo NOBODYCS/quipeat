@@ -52,6 +52,9 @@
   .tablink {
     @apply flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-bold text-slate-400 hover:text-volt-300 transition;
   }
+  .iconbtn {
+    @apply grid h-9 w-9 place-items-center rounded-xl border border-ink-600 bg-ink-800 text-base leading-none hover:bg-ink-700 hover:border-ink-600 transition active:scale-95 cursor-pointer;
+  }
   .tablink-active {
     @apply text-volt-400;
   }

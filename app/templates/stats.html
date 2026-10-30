@@ -10,9 +10,9 @@
 </div>
 <h2 class="text-lg font-semibold mb-3">{{ t("badges") }}</h2>
 <div class="flex flex-wrap gap-2 mb-8">
-  {% for name, desc in all_badges.items() %}
+  {% for name in all_badges %}
   {% set earned = badges | selectattr('badge', 'equalto', name) | list %}
-  <span class="rounded-lg border px-3 py-1.5 text-sm {% if earned %}border-amber-600 bg-amber-950/40 text-amber-200{% else %}border-slate-800 text-slate-500{% endif %}" title="{{ desc }}">{{ name }}</span>
+  <span class="rounded-lg border px-3 py-1.5 text-sm {% if earned %}border-volt-600/60 bg-volt-400/10 text-volt-200{% else %}border-ink-700 bg-ink-900 text-slate-500{% endif %}">{{ t("badge_" ~ name) }}</span>
   {% endfor %}
 </div>
 <h2 class="text-lg font-semibold mb-3">{{ t("last_14") }}</h2>

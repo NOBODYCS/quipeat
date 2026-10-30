@@ -2,7 +2,7 @@ LANGS = ("en", "pl")
 
 STRINGS = {
     "en": {
-        "nav_decks": "Decks", "nav_new": "New", "nav_study": "Study", "nav_stats": "Stats", "nav_admin": "Admin",
+        "nav_decks": "Decks", "nav_new": "New deck", "nav_study": "Study", "nav_stats": "Stats", "nav_admin": "Admin",
         "nav_settings": "Settings", "nav_logout": "Log out", "replay_tutorial": "Replay the intro tutorial",
         "decks_title": "Your decks", "new_deck": "＋ New deck", "empty_decks": "No decks yet. Upload a document, paste a link, or type a topic to generate your first quiz deck.",
         "create_one": "Create one now", "questions_n": "questions", "due_n": "due", "status": "status",
@@ -54,9 +54,15 @@ STRINGS = {
         "err_extract": "Could not extract readable text from that URL.",
         "err_generic": "Could not read that source. Try another file or link.",
         "deck_questions_count": "questions", "source": "source",
+        "pick_deck": "Study a deck", "no_badges_yet": "No badges yet — study to earn them!",
+        "toast_level_up": "Level up! Level", "toast_badge": "Badge earned", "toast_streak": "day streak",
+        "badge_first_steps": "First steps", "badge_getting_warm": "Getting warm",
+        "badge_century": "Century", "badge_streak_3": "3-day streak",
+        "badge_streak_7": "7-day streak", "badge_perfect_session": "Perfect session",
+
     },
     "pl": {
-        "nav_decks": "Talie", "nav_new": "Nowa", "nav_study": "Nauka", "nav_stats": "Statystyki", "nav_admin": "Admin",
+        "nav_decks": "Talie", "nav_new": "Nowa talia", "nav_study": "Nauka", "nav_stats": "Statystyki", "nav_admin": "Admin",
         "nav_settings": "Ustawienia", "nav_logout": "Wyloguj", "replay_tutorial": "Powtórz samouczek",
         "decks_title": "Twoje talie", "new_deck": "＋ Nowa talia", "empty_decks": "Brak talii. Dodaj dokument, link lub wpisz temat, aby wygenerować pierwszy zestaw pytań.",
         "create_one": "Utwórz teraz", "questions_n": "pytań", "due_n": "do powtórki", "status": "status",
@@ -108,6 +114,12 @@ STRINGS = {
         "err_extract": "Nie udało się wyodrębnić tekstu z tego adresu.",
         "err_generic": "Nie udało się odczytać tego źródła. Spróbuj innego pliku lub linku.",
         "deck_questions_count": "pytań", "source": "źródło",
+        "pick_deck": "Ucz się talii", "no_badges_yet": "Brak odznak — ucz się, aby je zdobyć!",
+        "toast_level_up": "Awans! Poziom", "toast_badge": "Zdobyto odznakę", "toast_streak": "passa dnia",
+        "badge_first_steps": "Pierwsze kroki", "badge_getting_warm": "Rozgrzewka",
+        "badge_century": "Stulecie", "badge_streak_3": "Passa 3 dni",
+        "badge_streak_7": "Passa 7 dni", "badge_perfect_session": "Perfekcyjna sesja",
+
     },
 }
 
