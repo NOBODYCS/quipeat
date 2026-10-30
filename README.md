@@ -6,14 +6,33 @@ repetition and gamification (XP, levels, streaks, badges).
 
 ## Run (LAN only)
 
+Prebuilt image (built and pushed to GHCR automatically on merge to `main` by
+`.github/workflows/docker-ghcr.yml`):
+
 ```bash
 cp .env.example .env   # then edit SECRET_KEY and MASTER_KEY
 # generate both keys:
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-docker compose up -d --build
-# app: http://127.0.0.1:8000 (or your LAN IP: change QUIPEAT_LAN_BIND in .env)
+# in docker-compose.yml: comment `build: .`, uncomment `image: ghcr.io/nobodycs/quipeat:latest`
+docker compose up -d
 ```
+
+Or build from source instead: keep `build: .` and run `docker compose up -d --build`.
+
+The container always listens on **8000 internally**. To use a different *host* port
+(e.g. an obscure one for nginx), set in `.env`:
+
+```
+QUIPEAT_LAN_BIND=127.0.0.1:37411:8000
+```
+
+→ app reachable on the Docker host at `http://127.0.0.1:37411` (or `0.0.0.0:37411:8000`
+for LAN). nginx then proxies `your.name` → `http://<docker-host>:37411`.
+
+In Portainer: create a stack from the repo (branch `main`, path `docker-compose.yml`)
+and set the env vars in the stack's environment section; or paste a compose file with
+`image: ghcr.io/nobodycs/quipeat:latest`.
 
 No part of this is meant to be exposed to the internet. Access it from PC/phone
 over your WireGuard network. If you later go public: serve via HTTPS (Caddy with
