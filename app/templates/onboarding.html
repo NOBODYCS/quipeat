@@ -39,10 +39,47 @@
       <a href="/onboarding?step=4" class="btn-primary flex-1">{{ t("continue") }}</a>
     </div>
   </div>
-  {% else %}
+  {% elif step == 4 %}
   <div class="card p-6">
     <h1 class="text-xl font-extrabold mb-1">{{ t("onb3_t") }}</h1>
     <p class="text-mist-400 text-sm mb-4"><b>🎯 {{ t("nav_study") }}</b>: {{ t("onb3_b") }}</p>
+    <div class="flex flex-wrap gap-2 mb-3">
+      <a href="/study" class="btn-primary flex-1">{{ t("open_study") }}</a>
+    </div>
+    <div class="flex gap-2">
+      <a href="/onboarding?step=3" class="btn-ghost flex-1">{{ t("back") }}</a>
+      <a href="/onboarding?step=5" class="btn-primary flex-1">{{ t("continue") }}</a>
+    </div>
+  </div>
+  {% elif step == 5 %}
+  <div class="card p-6">
+    <h1 class="text-xl font-extrabold mb-1">{{ t("onb4_t") }}</h1>
+    <p class="text-mist-400 text-sm mb-4">{{ t("onb4_b") }}</p>
+    <div class="flex flex-wrap gap-2 mb-3">
+      <a href="/decks" class="btn-primary flex-1">{{ t("open_decks") }}</a>
+    </div>
+    <div class="flex gap-2">
+      <a href="/onboarding?step=4" class="btn-ghost flex-1">{{ t("back") }}</a>
+      <a href="/onboarding?step=6" class="btn-primary flex-1">{{ t("continue") }}</a>
+    </div>
+  </div>
+  {% elif step == 6 %}
+  <div class="card p-6">
+    <h1 class="text-xl font-extrabold mb-1">{{ t("onb5_t") }}</h1>
+    <p class="text-mist-400 text-sm mb-4">{{ t("onb5_b") }}</p>
+    <div class="flex flex-wrap gap-2 mb-3">
+      <a href="/duels" class="btn-primary flex-1">{{ t("open_duels") }}</a>
+      <a href="/library" class="btn-ghost flex-1">{{ t("open_library") }}</a>
+    </div>
+    <div class="flex gap-2">
+      <a href="/onboarding?step=5" class="btn-ghost flex-1">{{ t("back") }}</a>
+      <a href="/onboarding?step=7" class="btn-primary flex-1">{{ t("continue") }}</a>
+    </div>
+  </div>
+  {% else %}
+  <div class="card p-6">
+    <h1 class="text-xl font-extrabold mb-1">{{ t("onb6_t") }}</h1>
+    <p class="text-mist-400 text-sm mb-4">{{ t("onb6_b") }}</p>
     {% if replay %}
     <form method="post" action="/onboarding/finish">
       <input type="hidden" name="csrf" value="{{ csrf }}">

@@ -280,8 +280,8 @@ async def onboarding(request: Request, step: int = 1, replay: int = 0):
     user = require_user(request)
     if user["onboarded_at"] and not replay:
         return RedirectResponse("/decks", status_code=303)
-    step = max(1, min(4, step))
-    return page(request, "onboarding.html", step=step, total_steps=4, replay=bool(replay))
+    step = max(1, min(7, step))
+    return page(request, "onboarding.html", step=step, total_steps=7, replay=bool(replay))
 
 
 @app.post("/onboarding/finish")

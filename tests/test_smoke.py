@@ -1770,3 +1770,29 @@ def test_build_pack_script_mock():
     from app.packs import validate_pack
     pack = validate_pack(data)
     assert len(pack.questions) >= 1
+
+
+def test_onboarding_covers_all_features():
+    """The tutorial has 7 steps and mentions every user-facing feature, en+pl."""
+    c = TestClient(app)
+    c.post("/register", data={"email": "onb@example.com", "password": "password123"}, follow_redirects=False)
+    for step in range(1, 8):
+        r = c.get(f"/onboarding?step={step}")
+        assert r.status_code == 200
+    # every step renders in PL too
+    db.execute("UPDATE users SET lang='pl' WHERE email='onb@example.com'")
+    for step in range(1, 8):
+        r = c.get(f"/onboarding?step={step}")
+        assert r.status_code == 200 and 'lang="pl"' in r.text
+    # feature keywords present in en across steps
+    c2 = TestClient(app)
+    c2.post("/register", data={"email": "onb2@example.com", "password": "password123"}, follow_redirects=False)
+    all_text = " ".join(c2.get(f"/onboarding?step={s}").text for s in range(1, 8))
+    for kw in ("Inspect", "Duels", "Library", "Profile", "pack", "master"):
+        assert kw in all_text, f"tutorial missing {kw}"
+    # steps beyond the step param clamp to the last step — check the real step-4..7 content directly
+    for step, kw in ((4, "Study"), (5, "Inspect"), (6, "Duels"), (7, "Profile")):
+        r = c2.get(f"/onboarding?step={step}")
+        assert r.status_code == 200 and kw in r.text, f"step {step} missing {kw}"
+    from app.i18n import STRINGS
+    assert set(STRINGS["en"]) == set(STRINGS["pl"])

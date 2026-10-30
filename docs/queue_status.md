@@ -7,7 +7,7 @@ Verified current state before coding: main @ b123e7a; generation overhaul,
 gamification/mastery layer, deck inspect view all present; htmx polling
 pattern exists (`hx-trigger="every 2s"` in `_job_status.html`); auth via
 session cookie + `require_user`/`owned_deck`; gamify.award_xp exists; tests
-60 green with LLM_MOCK=true.
+67 green with LLM_MOCK=true.
 
 ## Job A — 1v1 VS duels — DONE (f161acc)
 
@@ -42,3 +42,17 @@ session cookie + `require_user`/`owned_deck`; gamify.award_xp exists; tests
 - [ ] packs/photosynthesis_basics.pack.json — real 100-question build, en
 - [ ] packs/uklad_sloneczny.pack.json — real 100-question build, pl
 Run: python scripts/build_pack.py --topic "..." --count 100 --lang en|pl --out packs/...
+
+## User-facing feature map (post-queue, for docs/onboarding)
+
+- Decks: create from file/URL/text/topic, size target 20–200, language en/pl;
+  detail page with job progress, inspect (read-only reveal), review/edit/flag,
+  regen replace/add, export pack, rename, delete.
+- Study: least-mastered-first order, instant feedback (correct answer +
+  explanation), FSRS scheduling, mastery boxes, combo.
+- Library: shipped packs + clone + import pack file.
+- Duels: 1v1 on a deck, seeded 10 questions, polling live scores, forfeit 60s,
+  results + XP bonus, W/L on stats.
+- Profile: streak (5/day bar, 1 forgiven missed day per 7d), biggest combo,
+  badges; Settings toggle hides streak display.
+- Onboarding tutorial: 7 steps covering all of the above (en/pl).

@@ -1,8 +1,13 @@
 # Quipeat
 
-Turn any document, link, or topic into a quiz deck, then drill it with spaced
-repetition. Gamification: XP, levels, streaks, badges. English and Polish UI;
-quiz language is chosen per deck and passed to the LLM.
+Turn any document, link, pasted text, or just a topic name into a quiz deck
+(20–200 questions), then drill it until you master it. Study serves the
+least-mastered questions first, shows the correct answer + explanation after
+every answer, and tracks per-question mastery boxes. Beyond studying: inspect
+decks read-only, edit/flag questions, export decks as shareable pack files,
+browse a pack library, and race friends in 1v1 VS duels. Gamification: XP,
+deck levels, combos, streaks (with a weekly forgiveness), badges, profile.
+English and Polish UI; quiz language is chosen per deck and passed to the LLM.
 
 ## Run
 
@@ -32,23 +37,42 @@ Optional: `ADMIN_IDENT` (email or display name of the admin user),
 
 ## Use
 
-Register → (first time: short tutorial) → Settings: connect an LLM key
+Register → (first time: a 6-step tutorial) → Settings: connect an LLM key
 (OpenRouter or Mistral; encrypted at rest) or, if privileged, use the built-in
-one → New: upload PDF/DOCX/TXT/MD, paste a URL, or paste text, pick the quiz
-language → questions generate in the background → Study.
+one → **New**: upload PDF/DOCX/TXT/MD, paste a URL, paste text, or just name a
+topic (the app writes a research document on it first), pick the quiz language
+and deck size (20/50/100/200) → questions generate in the background, each
+verified against its source chunk → **Study**.
 
-Language switch (🇬🇧/🇵🇱) is in the top header.
+Deck page: **Inspect** (read-only, tap to reveal answers), **Review questions**
+(edit / delete / regenerate one / flag), **Regenerate** (replace all or add
+more), **Export pack** (download a shareable `.pack.json`). **Library**: shipped
+packs you can clone into your decks in one click + import a pack file.
+**Duels**: challenge another user on one of your decks — same 10 questions for
+both, live polling scores, 60 s idle = forfeit, winner gets bonus XP.
+**Profile** (`/profile`): streak, biggest combo, badges. **Stats**: charts +
+duel W/L. Language switch (🇬🇧/🇵🇱) is in the top header; replay the tutorial any
+time via the ⓘ button in the header or Settings.
 
 ## How question quality stays consistent across models
 
 - Strict JSON Schema on every LLM call + pydantic validation + retry-with-error.
-- Sources are chunked; questions must be answerable from the attached chunk.
-- A critic pass re-checks each question against its chunk; weak ones are dropped.
-- Dedup, versioned prompts in `app/prompts/`, and `model` + `prompt_version`
-  stored on every question.
-- Eval harness: `LLM_MOCK=true python scripts/eval_generation.py`
+- Structure-aware chunking (paragraphs/headings, never mid-sentence); questions
+  must be answerable from the attached chunk.
+- Wording rules (self-contained stems, length caps, no double negatives /
+  all-of-the-above / meta references) in `app/prompts/generate_v2.md`, and a
+  critic pass (`verify_v2.md`) re-checks each question for factual support AND
+  clarity; weak ones are dropped and the critic notes are stored.
+- Normalized dedup (prompts + option sets), versioned prompts in `app/prompts/`,
+  and `model` + `prompt_version` stored on every question.
+- Eval harness with quality assertions: `LLM_MOCK=true python scripts/eval_generation.py`
+- Pack builder: `python scripts/build_pack.py --topic "..." --count 100 --lang en`
+
+See `docs/generation_improvements.md` (audit + proposal) and
+`docs/queue_status.md` (duels + packs delivery status).
 
 ## Stack
 
-FastAPI + SQLite (WAL), Jinja2 + htmx + Tailwind, background threads for
-generation, FSRS-inspired scheduling. Tests: `pytest -q`.
+FastAPI + SQLite (WAL), Jinja2 + htmx + Tailwind (vendored htmx/fonts, no CDN),
+a bounded thread pool for generation, FSRS-inspired scheduling + mastery boxes.
+Tests: `pytest -q` (LLM_MOCK=true runs everything keyless).
