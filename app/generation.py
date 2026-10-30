@@ -93,6 +93,28 @@ def _similarity(a: str, b: str) -> float:
 
 LANG_NAMES = {"en": "English", "pl": "Polish (polski)"}
 
+_STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from",
+    "guide", "how", "in", "into", "intro", "is", "it", "of", "on", "or",
+    "quiz", "that", "the", "this", "to", "was", "what", "when", "with",
+    "basics", "fundamentals", "about", "my", "your",
+}
+
+
+def _topic_terms(title: str) -> set[str]:
+    return {t for t in re.findall(r"[a-z0-9]+", title.lower()) if len(t) > 2 and t not in _STOPWORDS}
+
+
+def _topic_score(chunk_text: str, terms: set[str]) -> float:
+    """Cheap keyword-overlap triage: how much of this chunk is about the topic."""
+    if not terms:
+        return 0.0
+    words = re.findall(r"[a-z0-9]+", chunk_text.lower())
+    if not words:
+        return 0.0
+    hits = sum(1 for w in words if w in terms)
+    return hits / len(words)
+
 
 def _lang_instruction(lang: str) -> str:
     name = LANG_NAMES.get(lang, "English")
@@ -145,15 +167,23 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
     chunks = db.query(
         "SELECT * FROM chunks WHERE source_id = ? ORDER BY idx", (deck["source_id"],))
 
-    # Evenly sample across the source so a big crawl still yields broad
-    # coverage at a bounded cost. Small sources keep every chunk.
+    # Triage, then sample. Score every chunk against the topic (keyword
+    # overlap with the deck title) and prefer the most on-topic chunks, so a
+    # big crawl spends its question budget on substantive pages instead of
+    # evenly across nav/legal/changelog filler. Ties and near-zero scores
+    # keep the original order (even spread across the source).
     needed = max(1, -(-target_questions // questions_per_chunk))
     if len(chunks) > needed:
-        step = len(chunks) / needed
-        chunks = [chunks[min(len(chunks) - 1, int(i * step))] for i in range(needed)]
+        terms = _topic_terms(deck["title"])
+        scored = [(_topic_score(c["text"], terms), i, c) for i, c in enumerate(chunks)]
+        top = min(len(chunks), max(needed, needed * 2))
+        best = sorted(scored, key=lambda t: (-t[0], t[1]))[:top]
+        best = sorted(best, key=lambda t: t[1])
+        step = len(best) / needed
+        picked = [best[min(len(best) - 1, int(i * step))][2] for i in range(needed)]
         seen_idx = set()
         deduped = []
-        for c in chunks:
+        for c in picked:
             if c["id"] not in seen_idx:
                 seen_idx.add(c["id"])
                 deduped.append(c)

@@ -306,3 +306,48 @@ def test_generation_prompt_is_topic_aware():
         assert "Topic relevance" in sent["system"]
     finally:
         generation._get_provider = orig
+
+
+def test_topic_triage_prefers_relevant_chunks():
+    """When the source exceeds the budget, sampling must prefer on-topic chunks."""
+    from app.generation import _topic_score, _topic_terms
+
+    terms = _topic_terms("Ansible quiz fundamentals")
+    assert "ansible" in terms
+    assert "quiz" not in terms and "fundamentals" not in terms
+
+    relevant = "Ansible playbooks use YAML to define tasks and modules " * 10
+    filler = "Please contribute by opening a pull request on GitHub " * 10
+    assert _topic_score(relevant, terms) > _topic_score(filler, terms) * 3
+    assert _topic_score(filler, terms) >= 0.0
+
+
+def test_triaged_sampling_end_to_end():
+    """A mixed source must spend the question budget on the relevant part."""
+    import time
+
+    relevant = ("Ansible playbooks use YAML to define tasks, modules, and inventory hosts. "
+                 "The ansible-playbook command runs them in order. ") * 20
+    filler = ("Copyright Red Hat. Contributing guide: open a pull request. "
+              "License: GPLv3. Changelog for release 2.15: minor fixes. ") * 20
+
+    big_text = (relevant + " " + filler) * 40
+    r = client.post("/new", data={"title": "Ansible", "topic_text": big_text,
+                                  "level": "quick"}, follow_redirects=False)
+    assert r.status_code == 303
+    deck_id = int(r.headers["location"].split("/decks/")[1].split("?")[0])
+
+    job = None
+    for _ in range(80):
+        job = db.query_one("SELECT * FROM jobs WHERE deck_id = ?", (deck_id,))
+        if job and job["status"] in ("done", "failed"):
+            break
+        time.sleep(0.2)
+    assert job["status"] == "done"
+
+    chunks_used = db.query(
+        "SELECT c.text FROM questions q JOIN chunks c ON c.id = q.chunk_id WHERE q.deck_id = ?",
+        (deck_id,))
+    assert chunks_used, "expected questions to be generated"
+    relevant_hits = sum(1 for c in chunks_used if "playbook" in c["text"] or "ansible" in c["text"].lower())
+    assert relevant_hits == len(chunks_used)
