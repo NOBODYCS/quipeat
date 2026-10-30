@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ t("error_500_title") }} · Quipeat{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-md text-center mt-16">
+  <div class="text-6xl font-extrabold mb-4 text-transparent bg-clip-text" style="background-image:linear-gradient(135deg,#f87171,#a78bfa 55%,#4de1ea)">500</div>
+  <h1 class="text-2xl font-extrabold mb-2">{{ t("error_500_title") }}</h1>
+  <p class="text-mist-400 mb-6">{{ t("error_500_body") }}</p>
+  <a href="/decks" class="btn-primary">{{ t("go_home") }}</a>
+</div>
+{% endblock %}

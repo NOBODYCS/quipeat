@@ -2,6 +2,7 @@ import hmac
 import json
 import logging
 import secrets
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -30,7 +31,13 @@ logging.basicConfig(
 )
 log = logging.getLogger("quipeat.main")
 
-app = FastAPI(title="Quipeat")
+@asynccontextmanager
+async def _lifespan(app):
+    _startup()
+    yield
+
+
+app = FastAPI(title="Quipeat", lifespan=_lifespan)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 
 # Anonymous POSTs that must stay open pre-auth (login/register/passkey ceremony).
@@ -69,7 +76,6 @@ async def _csrf_guard(request: Request, call_next):
     return await call_next(request)
 
 
-@app.on_event("startup")
 def _startup():
     from .config import validate_secrets
     validate_secrets()
@@ -224,6 +230,23 @@ async def _not_found(request: Request, exc):
     if request.url.path.startswith("/static/") or request.url.path.startswith("/api/"):
         return HTMLResponse("Not found", status_code=404)
     return page(request, "404.html")
+
+
+@app.exception_handler(Exception)
+async def _unhandled(request: Request, exc: Exception):
+    log.exception("unhandled error on %s %s", request.method, request.url.path)
+    if request.url.path.startswith("/static/") or request.url.path.startswith("/api/"):
+        return Response("Internal server error", status_code=500)
+    try:
+        return templates.TemplateResponse(request, "500.html", {
+            "request": request, "user": current_user(request),
+            "passkeys_enabled": settings.passkeys_enabled,
+            "lang": lang_of(request), "langs": LANGS,
+            "t": lambda k: translate(lang_of(request), k),
+            "csrf": csrf_token(request.cookies.get("quipeat_session") or ""),
+        }, status_code=500)
+    except Exception:
+        return HTMLResponse("Internal server error", status_code=500)
 
 
 @app.get("/login", response_class=HTMLResponse)

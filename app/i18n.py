@@ -49,7 +49,7 @@ STRINGS = {
         "open_settings": "Open Settings", "create_deck_now": "Create a deck now", "go_to_settings": "Go to Settings",
 
         "status_draft": "Draft", "status_generating": "Generating…", "status_ready": "Ready", "status_failed": "Failed",
-        "error_404_title": "Page not found", "error_404_body": "The page you are looking for does not exist or was moved.", "go_home": "Back to decks",
+        "error_404_title": "Page not found", "error_404_body": "The page you are looking for does not exist or was moved.", "error_500_title": "Something broke", "error_500_body": "An unexpected error occurred — it has been logged. Try again or head back to your decks.", "go_home": "Back to decks",
         "how_well_remember": "Show answer — how well do you remember it?",
         "register_title": "Create account", "register_sub": "Start building quiz decks.", "display_name": "Display name (optional)",
         "email": "Email", "password": "Password", "password_min": "Password (min 8 chars)", "have_account": "Already have an account?",
@@ -140,7 +140,7 @@ STRINGS = {
         "open_settings": "Otwórz Ustawienia", "create_deck_now": "Utwórz talię teraz", "go_to_settings": "Przejdź do Ustawień",
 
         "status_draft": "Szkic", "status_generating": "Generowanie…", "status_ready": "Gotowe", "status_failed": "Nieudane",
-        "error_404_title": "Nie znaleziono strony", "error_404_body": "Strona, której szukasz, nie istnieje lub została przeniesiona.", "go_home": "Wróć do talii",
+        "error_404_title": "Nie znaleziono strony", "error_404_body": "Strona, której szukasz, nie istnieje lub została przeniesiona.", "error_500_title": "Coś się zepsuło", "error_500_body": "Wystąpił nieoczekiwany błąd — został zapisany w logach. Spróbuj ponownie lub wróć do talii.", "go_home": "Wróć do talii",
         "how_well_remember": "Pokaż odpowiedź — jak dobrze to pamiętasz?",
         "register_title": "Załóż konto", "register_sub": "Zacznij tworzyć talie quizów.", "display_name": "Nazwa wyświetlana (opcjonalnie)",
         "email": "Email", "password": "Hasło", "password_min": "Hasło (min 8 znaków)", "have_account": "Masz już konto?",

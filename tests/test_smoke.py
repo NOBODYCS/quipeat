@@ -917,3 +917,15 @@ def test_auth_errors_i18n_pl():
     r = c3.post("/register", data={"email": "pl2@example.com", "password": "short"},
                 cookies={"quipeat_lang": "pl"}, follow_redirects=False)
     assert r.status_code == 200 and "co najmniej 8" in r.text
+
+
+def test_500_handler_renders_page():
+    """E12: an unhandled error in a page route renders 500.html, not a bare crash."""
+    from app import main as m
+    @m.app.get("/_boom")
+    async def _boom():
+        raise RuntimeError("boom")
+    c = TestClient(m.app, raise_server_exceptions=False)
+    r = c.get("/_boom")
+    assert r.status_code == 500 and "Something broke" in r.text
+    m.app.routes.remove(next(r for r in m.app.routes if getattr(r, "path", "") == "/_boom"))
