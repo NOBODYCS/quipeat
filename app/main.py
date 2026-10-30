@@ -34,8 +34,12 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), na
 
 @app.on_event("startup")
 def _startup():
+    from .config import validate_secrets
+    validate_secrets()
     db.init_db()
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
+    from .security import prune_expired_sessions
+    prune_expired_sessions()
     from . import diagnostics
     from .generation import prune_job_events, recover_stuck_jobs
     prune_job_events()

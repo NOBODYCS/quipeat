@@ -829,3 +829,15 @@ def test_upload_filename_path_traversal_sanitized():
     import os
     assert not os.path.exists("/tmp/evil_quipeat.txt")
     assert not any(".." in p for p in os.listdir(os.environ["UPLOAD_DIR"]))
+
+
+def test_default_secret_key_refused_outside_mock(monkeypatch):
+    """E4: the built-in dev SECRET_KEY must not silently boot the app."""
+    from app.config import DEFAULT_DEV_SECRET_KEY, validate_secrets
+    import app.config as cfg
+    import pytest as _pytest
+    monkeypatch.setattr(cfg, "settings", cfg.Settings(
+        secret_key=DEFAULT_DEV_SECRET_KEY, master_key="x", llm_mock=False))
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    with _pytest.raises(RuntimeError):
+        validate_secrets()

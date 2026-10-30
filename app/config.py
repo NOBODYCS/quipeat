@@ -1,10 +1,12 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_DEV_SECRET_KEY = "dev-insecure-change-me"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    secret_key: str = "dev-insecure-change-me"
+    secret_key: str = DEFAULT_DEV_SECRET_KEY
     master_key: str = ""
     database_path: str = "data/quipeat.db"
     upload_dir: str = "data/uploads"
@@ -64,3 +66,25 @@ DEFAULT_LEVEL = "standard"
 
 
 settings = Settings()
+
+
+def validate_secrets() -> None:
+    """Refuse to run with the built-in dev SECRET_KEY outside tests/mock mode:
+    it is the session-signing seed and (without MASTER_KEY) the Fernet key
+    for encrypted LLM API keys, so a default value means forgeable sessions
+    and decryptable keys."""
+    if settings.secret_key == DEFAULT_DEV_SECRET_KEY and not (settings.llm_mock or _is_test_env()):
+        raise RuntimeError(
+            "SECRET_KEY is set to the built-in development default. "
+            "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\" "
+            "and set it in .env (or export SECRET_KEY). Set LLM_MOCK=true only for tests.")
+    if not settings.master_key and not (settings.llm_mock or _is_test_env()):
+        raise RuntimeError(
+            "MASTER_KEY is empty: LLM API keys would be encrypted with a key derived "
+            "from SECRET_KEY. Generate one with: "
+            "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"")
+
+
+def _is_test_env() -> bool:
+    import os
+    return os.environ.get("PYTEST_CURRENT_TEST") is not None or os.environ.get("QUIPEAT_ALLOW_DEV_KEY") == "1"
