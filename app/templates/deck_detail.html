@@ -2,13 +2,16 @@
 {% block title %}{{ deck.title }} · Quipeat{% endblock %}
 {% block content %}
 <div class="mb-6">
-  <a href="/decks" class="text-sm text-slate-400 hover:text-volt-300">{{ t("back") }} {{ t("nav_decks") }}</a>
+  <a href="/decks" class="text-sm text-mist-400 hover:text-volt-300">{{ t("back") }} {{ t("nav_decks") }}</a>
   <h1 class="text-2xl font-extrabold mt-1 break-words">{{ deck.title }}</h1>
   <div class="mt-2 flex flex-wrap gap-1.5 text-xs">
-    <span class="chip">{{ deck.source_kind }}{% if deck.original_ref %} · {{ deck.original_ref }}{% endif %}</span>
+    <span class="chip">{{ t("source_kind_" ~ deck.source_kind) }}{% if deck.original_ref %} · {{ deck.original_ref }}{% endif %}</span>
     <span class="chip">{{ deck.q_count }} {{ t("questions_n") }}</span>
-    <span class="chip chip-volt">{{ deck.due_count }} {{ t("due_n") }}</span>
-    <span class="chip">{{ deck.status }}</span>
+    {% if deck.due_count %}<span class="chip chip-volt">{{ deck.due_count }} {{ t("due_n") }}</span>{% endif %}
+    {% if deck.status == 'ready' %}<span class="chip chip-mint">{{ t("status_ready") }}</span>
+    {% elif deck.status == 'failed' %}<span class="chip chip-red">{{ t("status_failed") }}</span>
+    {% elif deck.status == 'draft' %}<span class="chip chip-flame">{{ t("status_draft") }}</span>
+    {% else %}<span class="chip chip-flame pulse-soft">{{ t("status_generating") }}</span>{% endif %}
   </div>
 </div>
 {% if job and job.status not in ('done', 'failed') %}
@@ -22,6 +25,6 @@
   <a href="/study/{{ deck.id }}" class="btn-primary">{{ t("start_studying") }}</a>
   <a href="/decks/{{ deck.id }}/questions" class="btn-ghost">{{ t("review_questions") }}</a>
   <form method="post" action="/decks/{{ deck.id }}/regen"><button class="btn-ghost">↻ {{ t("regen") }}</button></form>
-  <form method="post" action="/decks/{{ deck.id }}/delete" onsubmit="return confirm('{{ t("confirm_delete") }}')"><button class="btn-danger">🗑 {{ t("delete_deck") }}</button></form>
+  <form method="post" action="/decks/{{ deck.id }}/delete" onsubmit="return confirm('{{ t("confirm_delete") }}')"><button class="btn-danger">{{ t("delete_deck") }}</button></form>
 </div>
 {% endblock %}

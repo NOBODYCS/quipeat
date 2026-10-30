@@ -2,7 +2,7 @@
 {% block title %}Questions · Quipeat{% endblock %}
 {% block content %}
 <div class="mb-6">
-  <a href="/decks/{{ deck.id }}" class="text-sm text-slate-400 hover:text-volt-300">← {{ deck.title }}</a>
+  <a href="/decks/{{ deck.id }}" class="text-sm text-mist-400 hover:text-volt-300">← {{ deck.title }}</a>
   <h1 class="text-2xl font-extrabold mt-1">{{ t("questions_title") }} ({{ questions | length }})</h1>
 </div>
 <div class="space-y-4">
@@ -14,18 +14,18 @@
     </div>
     <ul class="mt-3 space-y-1.5 text-sm">
       {% for opt in q.options %}
-      <li class="rounded-lg border px-3 py-2 {% if loop.index0 == q.correct_index %}border-volt-600/50 bg-volt-400/10 text-volt-200{% else %}border-ink-700 bg-ink-900 text-slate-400{% endif %}">
+      <li class="rounded-lg border px-3 py-2 {% if loop.index0 == q.correct_index %}border-volt-600/50 bg-volt-400/10 text-volt-200{% else %}border-ink-700 bg-ink-900 text-mist-400{% endif %}">
         <span class="font-semibold mr-2">{{ "ABCD"[loop.index0] }})</span>{{ opt }}{% if loop.index0 == q.correct_index %} ✓{% endif %}
       </li>
       {% endfor %}
     </ul>
     <div class="mt-3 flex items-center justify-between gap-2">
-      <p class="text-xs text-slate-500">{{ q.explanation }}</p>
+      <p class="text-xs text-mist-500">{{ q.explanation }}</p>
       <form method="post" action="/questions/{{ q.id }}/flag" class="shrink-0">
-        <button class="text-xs text-slate-500 hover:text-red-300 {% if q.flagged %}!text-red-400{% endif %}" title="{{ t("flag_question") }}">🚩 {% if q.flagged %}{{ t("flagged_thanks") }}{% endif %}</button>
+        <button class="text-xs text-mist-500 hover:text-red-300 {% if q.flagged %}!text-red-400{% endif %}" title="{{ t("flag_question") }}">🚩 {% if q.flagged %}{{ t("flagged_thanks") }}{% endif %}</button>
       </form>
     </div>
-    <p class="mt-1 text-[10px] text-slate-600">{{ q.model }} · {{ q.prompt_version }} · verify {{ q.verify_score }}</p>
+    <p class="mt-1 text-xs text-mist-500">{{ q.model }} · {{ q.prompt_version }} · verify {{ q.verify_score }}</p>
   </div>
   {% endfor %}
 </div>

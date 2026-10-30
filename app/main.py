@@ -124,6 +124,13 @@ async def register(request: Request, email: str = Form(...), password: str = For
     return resp
 
 
+@app.exception_handler(404)
+async def _not_found(request: Request, exc):
+    if request.url.path.startswith("/static/") or request.url.path.startswith("/api/"):
+        return HTMLResponse("Not found", status_code=404)
+    return page(request, "404.html")
+
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request, error: str | None = None):
     return page(request, "login.html", error=error)

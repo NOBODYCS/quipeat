@@ -4,16 +4,19 @@
 
 @layer base {
   html { letter-spacing: 0.005em; scroll-padding-top: 76px; scroll-padding-bottom: 96px; }
-  :focus-visible { outline: 2px solid #c8f04a; outline-offset: 2px; border-radius: 8px; }
+  :focus-visible { outline: 2px solid #c8f04a; outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }
   body {
     background:
-      radial-gradient(1200px 500px at 80% -10%, rgba(167, 139, 250, 0.08), transparent 60%),
-      radial-gradient(900px 420px at -10% 0%, rgba(200, 240, 74, 0.06), transparent 55%),
-      #191c23;
+      radial-gradient(1100px 520px at 85% -12%, rgba(167, 139, 250, 0.13), transparent 60%),
+      radial-gradient(900px 430px at -12% 2%, rgba(200, 240, 74, 0.09), transparent 55%),
+      radial-gradient(760px 380px at 50% 115%, rgba(77, 225, 234, 0.07), transparent 60%),
+      #10131d;
+    background-attachment: fixed;
   }
+  ::selection { background: rgba(200, 240, 74, 0.28); color: #fff; }
 }
 
 @layer components {
@@ -22,11 +25,14 @@
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition select-none active:scale-[.98] min-h-[44px];
   }
+  .btn-sm { @apply px-3.5 py-1.5 text-xs min-h-0; }
   .btn-primary {
-    @apply btn bg-volt-400 text-ink-950 shadow-btn hover:bg-volt-300;
+    @apply btn text-ink-950 shadow-btn;
+    background-image: linear-gradient(180deg, #d9f96e 0%, #c8f04a 55%, #b4e234 100%);
+    @apply hover:brightness-105;
   }
   .btn-ghost {
-    @apply btn border border-ink-600 bg-ink-800 text-slate-200 hover:bg-ink-750 hover:border-ink-600;
+    @apply btn border border-ink-700 bg-ink-800 text-mist-200 hover:bg-ink-750 hover:border-ink-600;
   }
   .btn-danger {
     @apply btn border border-red-900/60 bg-red-950/50 text-red-300 hover:bg-red-900/40;
@@ -34,35 +40,71 @@
   .card {
     @apply rounded-2xl border border-ink-700 bg-ink-850 shadow-card;
   }
-  .card-hover { @apply transition hover:bg-ink-750 hover:border-volt-600/50 hover:-translate-y-0.5; }
+  .card-grad {
+    @apply card border-transparent text-mist-100;
+    background-image:
+      linear-gradient(#161a27, #161a27) padding-box,
+      linear-gradient(135deg, rgba(200,240,74,.55), rgba(167,139,250,.45) 45%, rgba(77,225,234,.4)) border-box;
+  }
+  .card-hover { @apply transition hover:bg-ink-800 hover:border-ink-600 hover:-translate-y-0.5 hover:shadow-glow; }
   .input {
-    @apply w-full rounded-xl border border-ink-600 bg-ink-900 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-[#8b98ad] focus:border-volt-400 focus:outline-none focus:ring-2 focus:ring-volt-400/25 min-h-[44px];
+    @apply w-full rounded-xl border border-ink-700 bg-ink-900 px-3.5 py-2.5 text-sm text-mist-100 placeholder:text-mist-500 focus:border-volt-400 focus:outline-none focus:ring-2 focus:ring-volt-400/25 min-h-[44px];
   }
   .label {
-    @apply block text-sm font-semibold text-slate-300 mb-1.5;
+    @apply block text-sm font-semibold text-mist-300 mb-1.5;
   }
   .chip {
-    @apply inline-flex items-center gap-1 rounded-full bg-ink-800 border border-ink-600 px-2.5 py-1 text-xs font-medium text-slate-300;
+    @apply inline-flex items-center gap-1 rounded-full bg-ink-800 border border-ink-700 px-2.5 py-1 text-xs font-medium text-mist-300;
   }
   .chip-volt {
     @apply chip border-volt-600/50 bg-volt-400/10 text-volt-300;
+  }
+  .chip-mint {
+    @apply chip border-mint-400/40 bg-mint-400/10 text-mint-300;
+  }
+  .chip-flame {
+    @apply chip border-flame-400/40 bg-flame-400/10 text-flame-300;
+  }
+  .chip-red {
+    @apply chip border-red-700/60 bg-red-950/60 text-red-300;
+  }
+  .chip-lilac {
+    @apply chip border-lilac-400/40 bg-lilac-400/10 text-lilac-300;
   }
   .alert-error {
     @apply mb-4 rounded-xl border border-red-800/70 bg-red-950/50 px-4 py-2.5 text-sm text-red-300;
   }
   .alert-ok {
-    @apply mb-4 rounded-xl border border-volt-600/50 bg-volt-400/10 px-4 py-2.5 text-sm text-volt-200;
+    @apply mb-4 rounded-xl border border-mint-400/40 bg-mint-400/10 px-4 py-2.5 text-sm text-mint-200;
   }
   .navlink {
-    @apply rounded-lg px-3 py-2 text-sm font-semibold text-slate-300 hover:text-white hover:bg-ink-800 transition;
+    @apply rounded-lg px-3 py-2 text-sm font-semibold text-mist-300 hover:text-white hover:bg-ink-800 transition;
   }
   .tablink {
-    @apply flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-bold text-slate-400 hover:text-volt-300 transition;
+    @apply flex flex-col items-center gap-0.5 pt-2.5 pb-1 text-xs font-bold text-mist-400 hover:text-volt-300 transition min-h-[44px] justify-center;
   }
   .iconbtn {
-    @apply grid h-10 w-10 place-items-center rounded-full border border-ink-600 bg-ink-800 text-base leading-none hover:bg-ink-750 hover:border-ink-600 transition active:scale-95 cursor-pointer;
+    @apply grid h-10 w-10 place-items-center rounded-full border border-ink-700 bg-ink-800 text-base leading-none hover:bg-ink-750 transition active:scale-95 cursor-pointer text-mist-200;
   }
   .tablink-active {
     @apply text-volt-400;
   }
+  .opt-btn { @apply w-full text-left rounded-xl border border-ink-700 bg-ink-900 hover:border-volt-400 hover:bg-ink-800 px-4 py-3.5 text-sm transition min-h-[48px]; }
+
+  .toast {
+    position: fixed; z-index: 40; background: #161a27; border: 1px solid rgba(200, 240, 74, .35);
+    color: #eef1fa; font-size: 13px; font-weight: 700; padding: 10px 16px; border-radius: 999px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+    animation: toast-in .25s ease-out;
+  }
+  .toast { left: 50%; transform: translateX(-50%); bottom: calc(80px + env(safe-area-inset-bottom)); }
+  @media (min-width: 768px) {
+    .toast { left: auto; right: 20px; transform: none; bottom: 20px; }
+  }
+  @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  @media (min-width: 768px) {
+    @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  }
+  @keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+  .pulse-soft { animation: pulse-soft 1.6s ease-in-out infinite; }
 }

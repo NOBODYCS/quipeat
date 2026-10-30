@@ -1,24 +1,26 @@
 {% extends "base.html" %}
 {% block title %}Stats · Quipeat{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-semibold mb-6">{{ t("stats_title") }}</h1>
-<div class="grid gap-4 sm:grid-cols-4 mb-8">
-  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-semibold">{{ user.level }}</div><div class="text-xs text-slate-400">{{ t("level") }}</div></div>
-  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-semibold">{{ user.xp_total }}</div><div class="text-xs text-slate-400">{{ t("total_xp") }}</div></div>
-  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-semibold">{{ user.streak_days }} 🔥</div><div class="text-xs text-slate-400">{{ t("streak") }}</div></div>
-  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-semibold">{{ accuracy }}%</div><div class="text-xs text-slate-400">{{ t("accuracy") }} ({{ total_r }} {{ t("reviews") }}, {{ total_q }} {{ t("cards") }}</div></div>
+<h1 class="text-2xl font-extrabold mb-6">{{ t("stats_title") }}</h1>
+<div class="grid gap-4 grid-cols-2 lg:grid-cols-4 mb-8">
+  <div class="card p-4"><div class="text-2xl font-semibold text-transparent bg-clip-text" style="background-image:linear-gradient(135deg,#d9f96e,#c8f04a)">{{ user.level }}</div><div class="text-xs text-mist-400">{{ t("level") }}</div></div>
+  <div class="card p-4"><div class="text-2xl font-semibold text-white">{{ user.xp_total }}</div><div class="text-xs text-mist-400">{{ t("total_xp") }}</div></div>
+  <div class="card p-4"><div class="text-2xl font-semibold text-flame-300">{{ user.streak_days }} <svg class="inline h-5 w-5 text-flame-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4-3 5-3 8a3 3 0 0 0 6 .5C15 8 18 8 18 13a6 6 0 0 1-12 0c0-4 5-6 6-11z"/></svg></div><div class="text-xs text-mist-400">{{ t("streak") }}</div></div>
+  <div class="card p-4"><div class="text-2xl font-semibold text-mint-300">{{ accuracy }}%</div><div class="text-xs text-mist-400">{{ t("accuracy") }} ({{ total_r }} {{ t("reviews") }}, {{ total_q }} {{ t("cards") }})</div></div>
 </div>
 <h2 class="text-lg font-semibold mb-3">{{ t("badges") }}</h2>
 <div class="flex flex-wrap gap-2 mb-8">
   {% for name in all_badges %}
   {% set earned = badges | selectattr('badge', 'equalto', name) | list %}
-  <span class="rounded-lg border px-3 py-1.5 text-sm {% if earned %}border-volt-600/60 bg-volt-400/10 text-volt-200{% else %}border-ink-700 bg-ink-900 text-slate-500{% endif %}">{{ t("badge_" ~ name) }}</span>
+  <span class="rounded-lg border px-3 py-1.5 text-sm {% if earned %}border-volt-600/60 bg-volt-400/10 text-volt-200{% else %}border-ink-700 bg-ink-900 text-mist-500{% endif %}">{{ t("badge_" ~ name) }}</span>
   {% endfor %}
 </div>
 <h2 class="text-lg font-semibold mb-3">{{ t("last_14") }}</h2>
-<div class="flex items-end gap-1 h-24">
+{% set max_c = recent | map(attribute='c') | max if recent else 0 %}
+{% if not max_c %}{% set max_c = 1 %}{% endif %}
+<div class="flex items-end gap-1 h-24" role="img" aria-label="{{ t('last_14') }}">
   {% for r in recent %}
-  <div class="flex-1 bg-emerald-600/70 rounded-t" style="height:{{ [r.c * 8, 96] | min }}%" title="{{ r.d }}: {{ r.c }} reviews"></div>
+  <div class="flex-1 rounded-t transition-all {% if r.c %}bg-mint-400/70{% else %}bg-ink-750{% endif %}" style="{% if r.c %}height:{{ (r.c / max_c * 100) | round(1) }}{% else %}height:4px{% endif %}%" title="{{ r.d }}: {{ r.c }} {{ t('reviews') }}"></div>
   {% endfor %}
 </div>
 {% endblock %}

@@ -7,7 +7,7 @@
       <span class="grid h-10 w-10 place-items-center rounded-2xl bg-volt-400 text-xl font-extrabold text-ink-950 shadow-btn">Q</span>
       <div>
         <h1 class="text-xl font-extrabold">{{ t("register_title") }}</h1>
-        <p class="text-xs text-slate-400">{{ t("register_sub") }}</p>
+        <p class="text-xs text-mist-400">{{ t("register_sub") }}</p>
       </div>
     </div>
     {% if error %}<div class="alert-error" role="alert">{{ error }}</div>{% endif %}
@@ -23,11 +23,11 @@
       <div>
         <label for="password" class="label">{{ t("password_min") }}</label>
         <div class="relative"><input id="password" name="password" type="password" autocomplete="new-password" required minlength="8" class="input">
-        <button type="button" class="iconbtn !h-8 !w-8 absolute right-1.5 top-1/2 -translate-y-1/2 !border-0 !bg-transparent" onclick="var i=document.getElementById(\'password\'); i.type = i.type===\'password\'?\'text\':\'password\'; this.textContent = i.type===\'password\'?\'👁\':\'🙈\';" aria-label="Show/hide password">👁</button></div>
+        <button type="button" class="iconbtn !h-8 !w-8 absolute right-1.5 top-1/2 -translate-y-1/2 !border-0 !bg-transparent" onclick="var i=document.getElementById('password'); i.type = i.type==='password'?'text':'password'; this.firstElementChild.style.display = i.type==='password'?'':'none';" aria-label="Show/hide password"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/></svg></button></div>
       </div>
       <button type="submit" class="btn-primary w-full">{{ t("create_account") }}</button>
     </form>
-    <p class="mt-4 text-sm text-slate-400 text-center">{{ t("have_account") }} <a href="/login" class="text-volt-300 font-semibold hover:underline">{{ t("signin") }}</a></p>
+    <p class="mt-4 text-sm text-mist-400 text-center">{{ t("have_account") }} <a href="/login" class="text-volt-300 font-semibold hover:underline">{{ t("signin") }}</a></p>
   </div>
 </div>
 {% endblock %}

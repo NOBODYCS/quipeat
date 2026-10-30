@@ -4,7 +4,7 @@
 <div class="mx-auto max-w-md text-center mt-16">
   <div class="text-5xl mb-4">🎉</div>
   <h1 class="text-2xl font-bold mb-2">{{ t("study_done_title") }}: „{{ deck.title }}”</h1>
-  <p class="text-slate-400 mb-6">{{ t("study_done_body") }}{% if next_due %} {{ t("next_due_in") }} {{ next_due[:16].replace("T", " ") }}.{% endif %}</p>
+  <p class="text-mist-400 mb-6">{{ t("study_done_body") }}{% if next_due %} {{ t("next_due_in") }} {{ next_due[:16].replace("T", " ") }}.{% endif %}</p>
   <a href="/study" class="btn-primary">{{ t("study_another") }}</a>
 </div>
 {% endblock %}

@@ -4,17 +4,17 @@
 <div class="mx-auto max-w-md text-center mt-10">
   <div class="text-5xl mb-4">🎉</div>
   <h1 class="text-2xl font-extrabold mb-1">{{ t("session_summary") }}</h1>
-  <p class="text-slate-400 mb-6">{{ deck.title }}</p>
+  <p class="text-mist-400 mb-6">{{ deck.title }}</p>
   <div class="card p-6 grid grid-cols-3 gap-3 mb-6">
-    <div><div class="text-2xl font-extrabold text-white">{{ cards }}</div><div class="text-xs text-slate-400">{{ t("cards_reviewed") }}</div></div>
-    <div><div class="text-2xl font-extrabold text-white">{{ accuracy }}%</div><div class="text-xs text-slate-400">{{ t("accuracy") }}</div></div>
-    <div><div class="text-2xl font-extrabold text-volt-300">+{{ xp_total }}</div><div class="text-xs text-slate-400">XP</div></div>
+    <div><div class="text-2xl font-extrabold text-white">{{ cards }}</div><div class="text-xs text-mist-400">{{ t("cards_reviewed") }}</div></div>
+    <div><div class="text-2xl font-extrabold text-white">{{ accuracy }}%</div><div class="text-xs text-mist-400">{{ t("accuracy") }}</div></div>
+    <div><div class="text-2xl font-extrabold text-volt-300">+{{ xp_total }}</div><div class="text-xs text-mist-400">XP</div></div>
   </div>
-  {% if activity.freeze_used %}<div class="alert-ok">🛡 {{ t("freeze_used") }}</div>{% endif %}
+  {% if activity.freeze_used %}<div class="alert-ok"><svg class="inline h-4 w-4 text-aqua-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/></svg>  {{ t("freeze_used") }}</div>{% endif %}
   {% if award.leveled_up %}<div class="alert-ok">🎉 {{ t("level_up") }} {{ award.level }}!</div>{% endif %}
   {% if badges %}<div class="alert-ok">🏅 {{ t("toast_badge") }}</div>{% endif %}
   {% if next_due %}
-  <p class="text-sm text-slate-400 mb-6">{{ t("next_due_in") }} {{ next_due[:16].replace("T", " ") }}</p>
+  <p class="text-sm text-mist-400 mb-6">{{ t("next_due_in") }} {{ next_due[:16].replace("T", " ") }}</p>
   {% endif %}
   <div class="flex gap-2">
     <a href="/study" class="btn-primary flex-1">{{ t("study_another") }}</a>

@@ -9,7 +9,7 @@
   {% if builtin_available and user.role in ('admin', 'privileged') %}
   <div class="card p-5 mb-6 border-volt-600/40">
     <h2 class="text-lg font-extrabold mb-1">✨ {{ t("builtin_title") }} <span class="chip chip-volt ml-1">privileged</span></h2>
-    <p class="text-sm text-slate-400 mb-4">{{ t("builtin_hint") }}</p>
+    <p class="text-sm text-mist-400 mb-4">{{ t("builtin_hint") }}</p>
     <form method="post" action="/settings/model" class="flex flex-wrap gap-2">
       <input type="hidden" name="provider" value="builtin">
       <input type="hidden" name="model" value="{{ settings.builtin_model if settings else '' }}">
@@ -21,7 +21,7 @@
   {% else %}
   <h2 class="text-lg font-extrabold mb-1">{{ t("connect_llm") }}</h2>
   {% endif %}
-  <p class="text-sm text-slate-400 mb-4">{{ t("connect_llm_hint") }}</p>
+  <p class="text-sm text-mist-400 mb-4">{{ t("connect_llm_hint") }}</p>
   <form method="post" action="/settings/keys" class="grid gap-3 sm:grid-cols-2">
     <div>
       <label for="provider" class="label">{{ t("provider") }}</label>
@@ -40,7 +40,7 @@
     <div>
       <label for="api_key" class="label">{{ t("api_key") }}</label>
       <div class="relative"><input name="api_key" id="api_key" type="password" autocomplete="new-password" placeholder="sk-…" required class="input pr-12">
-        <button type="button" class="iconbtn !h-8 !w-8 absolute right-1.5 top-1/2 -translate-y-1/2 !border-0 !bg-transparent" onclick="var i=document.getElementById('api_key'); i.type = i.type==='password'?'text':'password'; this.textContent = i.type==='password'?'👁':'🙈';" aria-label="Show/hide API key">👁</button></div>
+        <button type="button" class="iconbtn !h-8 !w-8 absolute right-1.5 top-1/2 -translate-y-1/2 !border-0 !bg-transparent" onclick="var i=document.getElementById('api_key'); i.type = i.type==='password'?'text':'password'; this.firstElementChild.style.display = i.type==='password'?'':'none';" aria-label="Show/hide API key"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/></svg></button></div>
     </div>
     <div>
       <label for="label" class="label">{{ t("label") }}</label>
@@ -53,14 +53,14 @@
 <div class="card p-5 mb-6">
   <h2 class="text-lg font-extrabold mb-3">{{ t("saved_keys") }}</h2>
   {% if not keys %}
-  <p class="text-sm text-slate-400">{{ t("no_keys") }}</p>
+  <p class="text-sm text-mist-400">{{ t("no_keys") }}</p>
   {% else %}
   <ul class="space-y-2">
     {% for k in keys %}
     <li class="flex flex-wrap items-center gap-2 text-sm border border-ink-700 bg-ink-900 rounded-xl px-3 py-2.5">
       <span class="font-semibold text-white">{{ k.provider }}</span>
-      <span class="text-slate-400 font-mono text-xs">{{ k.masked }}</span>
-      {% if k.label %}<span class="text-slate-500 text-xs">({{ k.label }})</span>{% endif %}
+      <span class="text-mist-400 font-mono text-xs">{{ k.masked }}</span>
+      {% if k.label %}<span class="text-mist-500 text-xs">({{ k.label }})</span>{% endif %}
       {% if settings_row and settings_row.active_key_id == k.id %}<span class="chip chip-volt">{{ t("active") }}</span>{% endif %}
       <span class="ml-auto flex gap-3">
         {% if not (settings_row and settings_row.active_key_id == k.id) %}
@@ -91,8 +91,8 @@
 </div>
 
 <div class="card p-5 mb-6">
-  <h2 class="text-lg font-extrabold mb-3">🔥 {{ t("streak") }}</h2>
-  <p class="text-sm text-slate-400 mb-3">{% if user.freeze_available %}🛡 {{ t("freeze_avail") }} (1){% endif %}</p>
+  <h2 class="text-lg font-extrabold mb-3"><svg class="inline h-4 w-4 text-flame-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4-3 5-3 8a3 3 0 0 0 6 .5C15 8 18 8 18 13a6 6 0 0 1-12 0c0-4 5-6 6-11z"/></svg>  {{ t("streak") }}</h2>
+  <p class="text-sm text-mist-400 mb-3">{% if user.freeze_available %}<svg class="inline h-4 w-4 text-aqua-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/></svg>  {{ t("freeze_avail") }} (1){% endif %}</p>
   <form method="post" action="/settings/streaks">
     <input type="hidden" name="hide" value="{{ 0 if user.hide_streaks else 1 }}">
     <button class="btn-ghost text-xs">{{ t("hide_streaks") }}: {% if user.hide_streaks %}ON{% else %}OFF{% endif %}</button>

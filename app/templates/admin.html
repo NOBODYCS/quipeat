@@ -7,7 +7,7 @@
 <div class="card p-5 overflow-x-auto">
   <table class="w-full text-sm">
     <thead>
-      <tr class="text-left text-slate-400 border-b border-ink-700">
+      <tr class="text-left text-mist-400 border-b border-ink-700">
         <th class="pb-2 pr-4 font-semibold">{{ t("user") }}</th>
         <th class="pb-2 pr-4 font-semibold">{{ t("role") }}</th>
         <th class="pb-2 pr-4 font-semibold">{{ t("joined") }}</th>
@@ -16,17 +16,17 @@
     </thead>
     <tbody>
       {% for u in users %}
-      <tr class="border-b border-ink-800 last:border-0">
+      <tr class="border-b border-ink-750 last:border-0">
         <td class="py-3 pr-4">
           <div class="font-semibold text-white">{{ u.display_name or u.email }}</div>
-          <div class="text-xs text-slate-500">{{ u.email }}</div>
+          <div class="text-xs text-mist-500">{{ u.email }}</div>
         </td>
         <td class="py-3 pr-4">
           {% if u.role == 'admin' %}<span class="chip chip-volt">admin</span>
-          {% elif u.role == 'privileged' %}<span class="chip" style="border-color:rgba(167,139,250,.5);background:rgba(167,139,250,.12);color:#c4b5fd">privileged</span>
+          {% elif u.role == 'privileged' %}<span class="chip chip-lilac">privileged</span>
           {% else %}<span class="chip">member</span>{% endif %}
         </td>
-        <td class="py-3 pr-4 text-slate-400 text-xs">{{ u.created_at[:10] }}</td>
+        <td class="py-3 pr-4 text-mist-400 text-xs">{{ u.created_at[:10] }}</td>
         <td class="py-3">
           <form method="post" action="/admin/users/{{ u.id }}/role" class="flex gap-2">
             <select name="role" class="input !w-auto !min-h-0 !py-1.5 text-xs">
@@ -42,5 +42,5 @@
     </tbody>
   </table>
 </div>
-<p class="mt-4 text-xs text-slate-500">{{ t("admin_note") }}</p>
+<p class="mt-4 text-xs text-mist-500">{{ t("admin_note") }}</p>
 {% endblock %}

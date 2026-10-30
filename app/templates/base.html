@@ -3,40 +3,41 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#191c23">
+  <meta name="theme-color" content="#10131d">
   <title>{% block title %}Quipeat{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23c8f04a'/%3E%3Ctext x='32' y='45' font-family='DM Sans,Arial,sans-serif' font-size='38' font-weight='800' text-anchor='middle' fill='%230b0d14'%3EQ%3C/text%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/app.css">
   <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
 </head>
-<body class="h-full text-slate-100 antialiased font-sans">
+<body class="h-full text-mist-100 antialiased font-sans">
   {% if user %}
   <header class="sticky top-0 z-20 border-b border-ink-700 bg-ink-900/85 backdrop-blur">
     <div class="mx-auto max-w-6xl px-4 py-3 flex items-center gap-2">
       <a href="/decks" class="mr-2 flex items-center gap-2">
-        <span class="grid h-8 w-8 place-items-center rounded-xl bg-volt-400 text-lg font-extrabold text-ink-950 shadow-btn">Q</span>
+        <span class="grid h-8 w-8 place-items-center rounded-xl text-lg font-extrabold text-ink-950 shadow-btn" style="background-image:linear-gradient(180deg,#d9f96e,#c8f04a 55%,#b4e234)">Q</span>
         <span class="text-lg font-extrabold tracking-tight text-white hidden sm:block">Quipeat</span>
       </a>
-      <nav class="hidden md:flex items-center gap-1 ml-2">
+      <nav class="hidden md:flex items-center gap-1 ml-2" aria-label="Main">
         <div class="relative" id="study-menu">
-          <button class="navlink !border !border-volt-600/50 !bg-volt-400/10 !text-volt-300" id="study-menu-btn" onclick="document.getElementById('study-dd').classList.toggle('hidden')">
+          <button class="navlink !border !border-volt-600/50 !bg-volt-400/10 !text-volt-300" id="study-menu-btn" aria-haspopup="true" aria-expanded="false" aria-controls="study-dd">
             <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg> {{ t("nav_study") }}
             <svg class="inline h-3 w-3" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <div id="study-dd" class="hidden absolute left-0 mt-1 w-48 card !p-1.5 z-30">
-            <a href="/study" class="block rounded-lg px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-ink-700"><svg class="inline h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19a2 2 0 0 1 2-2h13"/></svg>{{ t("pick_deck") }}</a>
-            <a href="/new" class="block rounded-lg px-3 py-2 text-sm font-bold text-volt-300 hover:bg-ink-700"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> {{ t("nav_new") }}</a>
+          <div id="study-dd" class="hidden absolute left-0 mt-1 w-48 card !p-1.5 z-30" role="menu">
+            <a href="/study" role="menuitem" class="block rounded-lg px-3 py-2 text-sm font-semibold text-mist-200 hover:bg-ink-750"><svg class="inline h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19a2 2 0 0 1 2-2h13"/></svg>{{ t("pick_deck") }}</a>
+            <a href="/new" role="menuitem" class="block rounded-lg px-3 py-2 text-sm font-bold text-volt-300 hover:bg-ink-750"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> {{ t("nav_new") }}</a>
           </div>
         </div>
         <a href="/decks" class="navlink"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> {{ t("nav_decks") }}</a>
         {% if user.role == 'admin' %}<a href="/admin" class="navlink"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6L14 13l-3-3z"/></svg> {{ t("nav_admin") }}</a>{% endif %}
       </nav>
       <div class="ml-auto flex items-center gap-1.5">
-        {% if user.streak_days > 0 and not user.hide_streaks %}<span class="chip hidden sm:inline-flex" title="{{ t('streak') }}">🔥{{ user.streak_days }}{% if user.freeze_available %} 🛡{% endif %}</span>{% endif %}
-        <span class="chip hidden sm:inline-flex" title="{{ t('level') }} · {{ t('total_xp') }}">Lvl {{ user.level }} · {{ user.xp_total }} XP</span>
-        {% if user.role == 'admin' %}<span class="chip chip-volt hidden sm:inline-flex">admin</span>{% endif %}
+        {% if user.streak_days > 0 and not user.hide_streaks %}<span class="chip inline-flex" title="{{ t('streak') }}"><svg class="h-3.5 w-3.5 text-flame-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4-3 5-3 8a3 3 0 0 0 6 .5C15 8 18 8 18 13a6 6 0 0 1-12 0c0-4 5-6 6-11z"/></svg>{{ user.streak_days }}{% if user.freeze_available %} <svg class="h-3.5 w-3.5 text-aqua-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2v20M4 6l16 12M20 6L4 18"/></svg>{% endif %}</span>{% endif %}
+        <span class="chip inline-flex" title="{{ t('level') }} · {{ t('total_xp') }}">Lvl {{ user.level }} · {{ user.xp_total }} XP</span>
+        {% if user.role == 'admin' %}<span class="chip chip-volt inline-flex">admin</span>{% endif %}
         <form method="post" action="/settings/lang">
           <input type="hidden" name="lang" value="{{ 'pl' if lang == 'en' else 'en' }}">
           <button class="iconbtn" title="{{ t('site_language') }}" aria-label="{{ t('site_language') }}">{{ '🇵🇱' if lang == 'en' else '🇬🇧' }}</button>
@@ -61,58 +62,102 @@
           <span class="text-sm font-extrabold text-white">{{ t("stats_title") }}</span>
           <a href="/stats" class="text-xs text-volt-300 font-semibold hover:underline">→</a>
         </div>
-        <div class="text-xs text-slate-400 mb-1">Lvl {{ sidebar.level }} · {{ user.xp_total }} XP</div>
-        <div class="h-2 rounded-full bg-ink-700 overflow-hidden mb-3">
-          <div class="h-full bg-volt-400 rounded-full" style="width:{{ sidebar.pct }}%"></div>
+        <div class="text-xs text-mist-400 mb-1">Lvl {{ sidebar.level }} · {{ user.xp_total }} XP</div>
+        <div class="h-2 rounded-full bg-ink-750 overflow-hidden mb-3">
+          <div class="h-full rounded-full" style="width:{{ sidebar.pct }}%; background-image:linear-gradient(90deg,#c8f04a,#52eaa8)"></div>
         </div>
         <div class="flex gap-2 text-center">
           <div class="flex-1 rounded-lg bg-ink-900 border border-ink-700 py-1.5">
             <div class="text-sm font-extrabold text-white">{{ sidebar.reviews }}</div>
-            <div class="text-[10px] text-slate-500">{{ t("reviews") }}</div>
+            <div class="text-xs text-mist-400">{{ t("reviews") }}</div>
           </div>
           <div class="flex-1 rounded-lg bg-ink-900 border border-ink-700 py-1.5">
             <div class="text-sm font-extrabold text-white">{% if sidebar.accuracy is not none %}{{ sidebar.accuracy }}%{% else %}—{% endif %}</div>
-            <div class="text-[10px] text-slate-500">{{ t("accuracy") }}</div>
+            <div class="text-xs text-mist-400">{{ t("accuracy") }}</div>
           </div>
           <div class="flex-1 rounded-lg bg-ink-900 border border-ink-700 py-1.5">
-            <div class="text-sm font-extrabold text-white">🔥{{ sidebar.streak }}</div>
-            <div class="text-[10px] text-slate-500">{{ t("streak") }}</div>
+            <div class="text-sm font-extrabold text-white"><svg class="inline h-3.5 w-3.5 text-flame-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4-3 5-3 8a3 3 0 0 0 6 .5C15 8 18 8 18 13a6 6 0 0 1-12 0c0-4 5-6 6-11z"/></svg>{{ sidebar.streak }}</div>
+            <div class="text-xs text-mist-400">{{ t("streak") }}</div>
           </div>
         </div>
       </div>
       <div class="card p-4">
-        <div class="text-sm font-extrabold text-white mb-2">{{ t("badges") }} <span class="text-xs text-slate-500 font-semibold">{{ sidebar.badge_total }}/6</span></div>
+        <div class="text-sm font-extrabold text-white mb-2">{{ t("badges") }} <span class="text-xs text-mist-500 font-semibold">{{ sidebar.badge_total }}/6</span></div>
         <div class="flex flex-wrap gap-1.5">
-          {% for b in sidebar.badges %}<span class="chip chip-volt text-[10px]">{{ t("badge_" ~ b.badge) }}</span>{% else %}<span class="text-xs text-slate-500">{{ t("no_badges_yet") }}</span>{% endfor %}
+          {% for b in sidebar.badges %}<span class="chip chip-volt text-xs">{{ t("badge_" ~ b.badge) }}</span>{% else %}<span class="text-xs text-mist-500">{{ t("no_badges_yet") }}</span>{% endfor %}
         </div>
       </div>
     </aside>
     {% endif %}
   </div>
   {% if user %}
-  <div id="mobile-study-sheet" class="md:hidden fixed inset-0 z-40 hidden">
-    <div class="absolute inset-0 bg-black/60" onclick="document.getElementById('mobile-study-sheet').classList.add('hidden')"></div>
-    <div class="absolute bottom-0 inset-x-0 rounded-t-3xl border-t border-ink-700 bg-ink-900 p-4 pb-6">
+  <div id="mobile-study-sheet" class="md:hidden fixed inset-0 z-40 hidden" role="dialog" aria-modal="true" aria-label="{{ t('nav_study') }}">
+    <div class="absolute inset-0 bg-black/60" data-sheet-close></div>
+    <div class="absolute bottom-0 inset-x-0 rounded-t-3xl border-t border-ink-700 bg-ink-900 p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
       <div class="mx-auto w-10 h-1 rounded-full bg-ink-600 mb-4"></div>
       <div class="text-sm font-extrabold text-white mb-2 px-1"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg> {{ t("nav_study") }}</div>
-      <a href="/study" class="block rounded-xl bg-ink-850 border border-ink-700 px-4 py-3.5 mb-2 text-sm font-bold text-slate-100" onclick="document.getElementById('mobile-study-sheet').classList.add('hidden')"><svg class="inline h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19a2 2 0 0 1 2-2h13"/></svg>{{ t("pick_deck") }}</a>
-      <a href="/new" class="block rounded-xl bg-volt-400 px-4 py-3.5 text-sm font-extrabold text-ink-950 text-center" onclick="document.getElementById('mobile-study-sheet').classList.add('hidden')"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> {{ t("nav_new") }}</a>
+      <a href="/study" class="block rounded-xl bg-ink-850 border border-ink-700 px-4 py-3.5 mb-2 text-sm font-bold text-mist-100"><svg class="inline h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19a2 2 0 0 1 2-2h13"/></svg>{{ t("pick_deck") }}</a>
+      <a href="/new" class="block rounded-xl px-4 py-3.5 text-sm font-extrabold text-ink-950 text-center shadow-btn" style="background-image:linear-gradient(180deg,#d9f96e,#c8f04a 55%,#b4e234)"><svg class="h-[18px] w-[18px] inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> {{ t("nav_new") }}</a>
     </div>
   </div>
-  <nav class="fixed bottom-0 inset-x-0 z-20 border-t border-ink-700 bg-ink-900/95 backdrop-blur md:hidden">
+  <nav class="fixed bottom-0 inset-x-0 z-20 border-t border-ink-700 bg-ink-900/95 backdrop-blur md:hidden pb-[env(safe-area-inset-bottom)]" aria-label="Mobile">
     <div class="mx-auto max-w-5xl grid grid-cols-3">
       <a href="/decks" class="tablink {% if request.url.path.startswith('/decks') %}tablink-active{% endif %}"><span><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>{{ t("nav_decks") }}</a>
-      <button class="tablink {% if request.url.path.startswith('/study') or request.url.path == '/new' %}tablink-active{% endif %}" onclick="document.getElementById('mobile-study-sheet').classList.remove('hidden')"><span><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>{{ t("nav_study") }} <svg class="inline h-2.5 w-2.5" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button class="tablink {% if request.url.path.startswith('/study') or request.url.path == '/new' %}tablink-active{% endif %}" id="mobile-study-btn" aria-haspopup="dialog" aria-expanded="false"><span><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>{{ t("nav_study") }} <svg class="inline h-2.5 w-2.5" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <a href="/stats" class="tablink {% if request.url.path == '/stats' %}tablink-active{% endif %}"><span><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg></span>{{ t("nav_stats") }}</a>
     </div>
   </nav>
   {% endif %}
   <script>
-    document.addEventListener('click', function (e) {
+    (function () {
+      function setExpanded(btn, open) {
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      }
+      var ddBtn = document.getElementById('study-menu-btn');
       var dd = document.getElementById('study-dd');
-      var btn = document.getElementById('study-menu-btn');
-      if (dd && btn && !dd.contains(e.target) && !btn.contains(e.target)) dd.classList.add('hidden');
-    });
+      if (ddBtn && dd) {
+        ddBtn.addEventListener('click', function () {
+          var open = dd.classList.toggle('hidden') === false;
+          setExpanded(ddBtn, open);
+        });
+      }
+      var sheetBtn = document.getElementById('mobile-study-btn');
+      var sheet = document.getElementById('mobile-study-sheet');
+      if (sheetBtn && sheet) {
+        sheetBtn.addEventListener('click', function () {
+          sheet.classList.remove('hidden');
+          setExpanded(sheetBtn, true);
+          var first = sheet.querySelector('a');
+          if (first) first.focus();
+        });
+        sheet.addEventListener('click', function (e) {
+          if (e.target.closest('[data-sheet-close]') || e.target.closest('a')) {
+            sheet.classList.add('hidden');
+            setExpanded(sheetBtn, false);
+          }
+        });
+        sheet.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape') {
+            sheet.classList.add('hidden');
+            setExpanded(sheetBtn, false);
+            sheetBtn.focus();
+          }
+        });
+      }
+      document.addEventListener('click', function (e) {
+        if (dd && ddBtn && !dd.contains(e.target) && !ddBtn.contains(e.target)) {
+          dd.classList.add('hidden');
+          setExpanded(ddBtn, false);
+        }
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && dd && !dd.classList.contains('hidden')) {
+          dd.classList.add('hidden');
+          setExpanded(ddBtn, false);
+          ddBtn.focus();
+        }
+      });
+    })();
   </script>
 <script>
   document.addEventListener('submit', function (e) {

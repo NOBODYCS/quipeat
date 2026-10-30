@@ -1,20 +1,20 @@
 <div class="mx-auto max-w-2xl" id="card-area" aria-live="polite">
-  <div class="rounded-2xl border {% if correct %}border-volt-600/60 bg-volt-400/5{% else %}border-red-800 bg-red-950/40{% endif %} p-6">
+  <div class="rounded-2xl border p-6 {% if correct %}border-mint-400/50 bg-mint-400/5{% else %}border-red-800 bg-red-950/40{% endif %}">
     <div class="flex items-center justify-between mb-4">
-      <span class="font-extrabold {% if correct %}text-volt-300{% else %}text-red-300{% endif %}">
+      <span class="font-extrabold {% if correct %}text-mint-300{% else %}text-red-300{% endif %}">
         {% if correct %}{{ t("correct") }} ✓{% else %}{{ t("not_quite") }} — {{ t("rate_again") }}{% endif %}
       </span>
     </div>
     <p class="text-sm font-semibold text-white mb-1">{{ q.prompt }}</p>
     <ul class="mb-4 space-y-1.5 text-sm">
       {% for opt in q.options %}
-      <li class="rounded-lg border px-3 py-2 {% if loop.index0 == q.correct_index %}border-volt-600/60 bg-volt-400/10 text-volt-200{% elif loop.index0 == choice %}border-red-700 bg-red-950/50 text-red-200{% else %}border-ink-700 bg-ink-900 text-slate-400{% endif %}">
+      <li class="rounded-lg border px-3 py-2 {% if loop.index0 == q.correct_index %}border-mint-400/60 bg-mint-400/10 text-mint-200{% elif loop.index0 == choice %}border-red-700 bg-red-950/50 text-red-200{% else %}border-ink-700 bg-ink-900 text-mist-400{% endif %}">
         <span class="font-bold mr-2">{{ "ABCD"[loop.index0] }})</span>{{ opt }}
         {% if loop.index0 == q.correct_index %} ✓{% endif %}{% if loop.index0 == choice and not correct %} ✗{% endif %}
       </li>
       {% endfor %}
     </ul>
-    <p class="text-sm text-slate-300 mb-5">{{ q.explanation }}</p>
+    <p class="text-sm text-mist-300 mb-5">{{ q.explanation }}</p>
     {% if not correct %}
     <form hx-post="/study/{{ deck_id }}/rate" hx-target="#card-area" hx-swap="outerHTML">
       <input type="hidden" name="question_id" value="{{ q.id }}">
@@ -23,13 +23,13 @@
       <button class="btn-danger w-full">{{ t("rate_again") }}</button>
     </form>
     {% else %}
-    <p class="text-xs text-slate-400 mb-2 font-semibold">{{ t("show_answer") }} — jak dobrze to pamiętasz?</p>
+    <p class="text-xs text-mist-400 mb-2 font-semibold">{{ t("how_well_remember") }}</p>
     <form hx-post="/study/{{ deck_id }}/rate" hx-target="#card-area" hx-swap="outerHTML" class="grid grid-cols-3 gap-2">
       <input type="hidden" name="question_id" value="{{ q.id }}">
       <input type="hidden" name="choice" value="{{ choice }}">
-      <button name="rating" value="hard" class="btn-ghost !py-2.5 text-xs">😬 {{ t("rate_hard") }}</button>
-      <button name="rating" value="good" class="btn-ghost !py-2.5 text-xs border-volt-600/40">🙂 {{ t("rate_good") }}</button>
-      <button name="rating" value="easy" class="btn-primary !py-2.5 text-xs">😎 {{ t("rate_easy") }}</button>
+      <button name="rating" value="hard" class="btn-ghost btn-sm">{{ t("rate_hard") }}</button>
+      <button name="rating" value="good" class="btn-ghost btn-sm">{{ t("rate_good") }}</button>
+      <button name="rating" value="easy" class="btn-primary btn-sm">{{ t("rate_easy") }}</button>
     </form>
     {% endif %}
   </div>

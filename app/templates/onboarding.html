@@ -10,15 +10,15 @@
 
   {% if step == 1 %}
   <div class="card p-6 text-center">
-    <div class="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-3xl bg-volt-400 text-3xl font-extrabold text-ink-950 shadow-btn">Q</div>
+    <div class="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-3xl text-3xl font-extrabold text-ink-950 shadow-btn" style="background-image:linear-gradient(180deg,#d9f96e,#c8f04a 55%,#b4e234)">Q</div>
     <h1 class="text-2xl font-extrabold mb-2">{{ t("onb_welcome") }}</h1>
-    <p class="text-slate-400 mb-6">{{ t("onb_welcome_body") }}</p>
+    <p class="text-mist-400 mb-6">{{ t("onb_welcome_body") }}</p>
     <a href="/onboarding?step=2" class="btn-primary w-full">{{ t("get_started") }}</a>
   </div>
   {% elif step == 2 %}
   <div class="card p-6">
     <h1 class="text-xl font-extrabold mb-1">{{ t("onb1_t") }}</h1>
-    <p class="text-slate-400 text-sm mb-4"><b>⚙ {{ t("nav_settings") }}</b>: {{ t("onb1_b") }}</p>
+    <p class="text-mist-400 text-sm mb-4"><b>⚙ {{ t("nav_settings") }}</b>: {{ t("onb1_b") }}</p>
     <div class="flex gap-2">
       <a href="/onboarding?step=1" class="btn-ghost flex-1">{{ t("back") }}</a>
       <a href="/onboarding?step=3" class="btn-primary flex-1">{{ t("continue") }}</a>
@@ -27,7 +27,7 @@
   {% elif step == 3 %}
   <div class="card p-6">
     <h1 class="text-xl font-extrabold mb-1">{{ t("onb2_t") }}</h1>
-    <p class="text-slate-400 text-sm mb-4"><b>＋ {{ t("nav_new") }}</b>: {{ t("onb2_b") }}</p>
+    <p class="text-mist-400 text-sm mb-4"><b>＋ {{ t("nav_new") }}</b>: {{ t("onb2_b") }}</p>
     <div class="flex gap-2">
       <a href="/onboarding?step=2" class="btn-ghost flex-1">{{ t("back") }}</a>
       <a href="/onboarding?step=4" class="btn-primary flex-1">{{ t("continue") }}</a>
@@ -36,14 +36,14 @@
   {% else %}
   <div class="card p-6">
     <h1 class="text-xl font-extrabold mb-1">{{ t("onb3_t") }}</h1>
-    <p class="text-slate-400 text-sm mb-4"><b>🎯 {{ t("nav_study") }}</b>: {{ t("onb3_b") }}</p>
+    <p class="text-mist-400 text-sm mb-4"><b>🎯 {{ t("nav_study") }}</b>: {{ t("onb3_b") }}</p>
     {% if replay %}
     <form method="post" action="/onboarding/finish">
       <input type="hidden" name="replay" value="1">
       <button class="btn-primary w-full">{{ t("done") }}</button>
     </form>
     {% else %}
-    <p class="text-sm text-slate-400 mb-4">{{ t("onb_last") }}</p>
+    <p class="text-sm text-mist-400 mb-4">{{ t("onb_last") }}</p>
     <form method="post" action="/onboarding/finish">
       <button class="btn-primary w-full">{{ t("connect_llm_btn") }}</button>
     </form>
