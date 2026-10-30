@@ -299,13 +299,14 @@ async def new_source(request: Request, title: str = Form(...), goal: str = Form(
                 raise IngestError("__err_file_too_big")
             upload_dir = Path(settings.upload_dir)
             upload_dir.mkdir(parents=True, exist_ok=True)
-            tmp = upload_dir / f"{secrets.token_hex(8)}_{file.filename}"
+            safe_name = Path(file.filename).name  # strip any path components
+            tmp = upload_dir / f"{secrets.token_hex(8)}_{safe_name}"
             tmp.write_bytes(data)
             try:
-                raw = extract_text_from_file(tmp, file.filename)
+                raw = extract_text_from_file(tmp, safe_name)
             finally:
                 tmp.unlink(missing_ok=True)
-            kind, ref = "file", file.filename
+            kind, ref = "file", safe_name
         elif url:
             raw = ""
             kind, ref = "url", url

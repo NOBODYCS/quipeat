@@ -816,3 +816,16 @@ def test_rated_card_becomes_due_again():
     assert n >= 1
     r = c.get(f"/study/{deck_id}")
     assert r.status_code == 200 and "card-area" in r.text
+
+
+def test_upload_filename_path_traversal_sanitized():
+    """B5: a malicious upload filename must not escape the upload dir."""
+    c, _, _ = _register_and_deck("up@example.com")
+    evil = b"hello traversal"
+    r = c.post("/new", data={"title": "T", "goal": "g"},
+               files={"file": ("../../../tmp/evil_quipeat.txt", evil, "text/plain")},
+               follow_redirects=False)
+    assert r.status_code == 303, r.text[:300]
+    import os
+    assert not os.path.exists("/tmp/evil_quipeat.txt")
+    assert not any(".." in p for p in os.listdir(os.environ["UPLOAD_DIR"]))
