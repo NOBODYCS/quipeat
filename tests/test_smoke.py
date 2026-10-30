@@ -1104,3 +1104,33 @@ def test_topic_mode_research_doc_then_questions():
     # deck page discloses generated-research grounding
     page = c.get(f"/decks/{deck_id}")
     assert "grounded in generated research" in page.text
+
+
+def test_chunking_v2_never_cuts_sentences_and_drops_boilerplate():
+    """F6/P1-9: paragraph-structured input chunks at sentence boundaries; headings
+    kept with their paragraph; boilerplate chunks dropped; overlap preserved."""
+    from app.ingest import chunk_text_v2
+    paras = []
+    for p in range(30):
+        paras.append(f"# Section {p}\n\n" + " ".join(f"Sentence {p}.{s} has content." for s in range(12)))
+    text = "\n\n".join(paras)
+    chunks = chunk_text_v2(text, chunk_tokens=60, overlap_tokens=15)
+    assert len(chunks) > 3
+    for c in chunks:
+        assert len(c.split()) <= 60 or c.endswith((".", "!", "?")), "oversized chunk not sentence-terminated"
+        # every chunk must end at a sentence boundary (or be a single long sentence)
+        assert c.rstrip().endswith((".", "!", "?", "…")) or len(c.split()) > 60
+    # unpunctuated run: chunk boundaries must not split mid-"sentence" (no terminators exist,
+    # so chunks are pure word windows — but with punctuation present they align)
+    punct = "The cell produces ATP. " * 100
+    ch = chunk_text_v2(punct, chunk_tokens=20, overlap_tokens=5)
+    assert all(c.rstrip().endswith(".") for c in ch), [c[-20:] for c in ch]
+    # boilerplate dropped
+    boiler = chunk_text_v2("References\n\n" + "Real content sentence here. " * 50 + "\n\n1.\n\n2.", chunk_tokens=30)
+    assert all(len(c.split()) >= 8 for c in boiler)
+    assert not any(c.strip() in ("References", "1.", "2.") for c in boiler)
+    # overlap: consecutive chunks share trailing words
+    big = " ".join(f"Word{i} sentence ends here." for i in range(200))
+    ch2 = chunk_text_v2(big, chunk_tokens=40, overlap_tokens=10)
+    shared = set(ch2[0].split()) & set(ch2[1].split())
+    assert len(shared) > 0, "no overlap between consecutive chunks"

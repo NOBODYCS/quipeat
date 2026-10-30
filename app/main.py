@@ -16,7 +16,7 @@ from .fsrs import grade, xp_for
 from .config import DEFAULT_LEVEL, DEFAULT_TARGET, LEVELS, TARGET_CHOICES, settings
 from .i18n import LANGS, STRINGS, translate
 from .generation import start_generation
-from .ingest import chunk_text, extract_text_from_file, extract_text_from_url, IngestError
+from .ingest import chunk_text, chunk_text_v2, extract_text_from_file, extract_text_from_url, IngestError
 from .llm.providers import DEFAULT_MODELS
 from .security import (create_session, csrf_token, decrypt_secret, delete_session, encrypt_secret,
                        get_session_user, hash_password, mask_key, rate_limit_key, rate_limited,
@@ -420,7 +420,7 @@ async def new_source(request: Request, title: str = Form(...), goal: str = Form(
                      (user["id"], kind, title, ref, raw))
     source_id = cur.lastrowid
     if kind != "topic":  # topic sources are chunked by the job after the research doc is written
-        for idx, piece in enumerate(chunk_text(raw)):
+        for idx, piece in enumerate(chunk_text_v2(raw)):
             db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)", (source_id, idx, piece))
     cur = db.execute("INSERT INTO decks(user_id, source_id, title, goal, lang, level, target_questions)"
                      " VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -654,7 +654,7 @@ async def regen_deck(request: Request, deck_id: int, mode: str = Form("replace")
     # URL decks re-crawl in the job. File/text decks have no crawler: re-chunk
     # from the stored raw_text, otherwise regen yields zero chunks/questions.
     if deck["source_kind"] != "url":
-        for idx, piece in enumerate(chunk_text(deck["raw_text"] or "")):
+        for idx, piece in enumerate(chunk_text_v2(deck["raw_text"] or "")):
             db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)",
                        (deck["source_id"], idx, piece))
     db.execute("UPDATE decks SET status='draft' WHERE id = ?", (deck_id,))

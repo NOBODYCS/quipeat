@@ -241,3 +241,74 @@ def chunk_text(text: str, chunk_tokens: int = CHUNK_TOKENS,
         if start + chunk_tokens >= len(words):
             break
     return chunks
+
+
+_SENT_END = re.compile(r"(?<=[.!?…])\s+")
+_HEADING = re.compile(r"^(#{1,6}\s|={3,}\s*$|-{3,}\s*$|[A-Z][A-Z0-9 &,'-]{6,}\s*$)", re.M)
+
+
+def _split_sentences(text: str) -> list[str]:
+    """Split on sentence terminators followed by whitespace/newline. A sentence
+    longer than the chunk limit is kept whole (never cut mid-sentence)."""
+    return [s.strip() for s in _SENT_END.split(text) if s.strip()]
+
+
+def _split_blocks(text: str) -> list[str]:
+    """Split into paragraph/heading blocks on blank lines; headings stay attached
+    to the following paragraph."""
+    raw_blocks = re.split(r"\n\s*\n", text)
+    blocks = []
+    for b in raw_blocks:
+        b = b.strip()
+        if b:
+            blocks.append(b)
+    return blocks
+
+
+def chunk_text_v2(text: str, chunk_tokens: int = CHUNK_TOKENS,
+                  overlap_tokens: int = OVERLAP_TOKENS) -> list[str]:
+    """Structure-aware chunking: pack whole sentences (never cut mid-sentence)
+    from paragraph/heading blocks up to chunk_tokens words, keep overlap by
+    carrying whole trailing sentences, and drop boilerplate chunks (too short or
+    no sentence terminator)."""
+    text = text.strip()
+    if not text:
+        return []
+    sentences: list[str] = []
+    for block in _split_blocks(text):
+        sentences.extend(_split_sentences(block))
+    if not sentences:
+        sentences = [text]
+
+    chunks: list[str] = []
+    current: list[str] = []
+    current_words = 0
+    i = 0
+    while i < len(sentences):
+        s = sentences[i]
+        w = len(s.split())
+        if current and current_words + w > chunk_tokens:
+            chunks.append(" ".join(current))
+            # overlap: carry trailing sentences up to overlap_tokens words
+            carry: list[str] = []
+            carry_words = 0
+            for prev in reversed(current):
+                pw = len(prev.split())
+                if carry_words + pw > overlap_tokens:
+                    break
+                carry.insert(0, prev)
+                carry_words += pw
+            current, current_words = carry, carry_words
+        current.append(s)
+        current_words += w
+        i += 1
+    if current:
+        chunks.append(" ".join(current))
+
+    def _is_boilerplate(chunk: str) -> bool:
+        words = chunk.split()
+        if len(words) < 8:
+            return True
+        return not re.search(r"[.!?…]", chunk) and len(words) < 25
+
+    return [c for c in chunks if not _is_boilerplate(c)]

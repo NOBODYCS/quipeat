@@ -17,7 +17,7 @@ from .llm.providers import make_provider
 from .llm.structured import structured_call
 from .security import decrypt_secret
 from .i18n import translate
-from .ingest import extract_text_from_url, chunk_text
+from .ingest import extract_text_from_url, chunk_text, chunk_text_v2
 
 PROMPT_VERSION = "v2"
 MIN_VERIFY_SCORE = 0.7
@@ -348,11 +348,11 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
                                      max_tokens=8192)
             raw = _render_research_doc(doc)
             db.execute("UPDATE sources SET raw_text=? WHERE id=?", (raw, deck["source_id"]))
-            for idx, piece in enumerate(chunk_text(raw)):
+            for idx, piece in enumerate(chunk_text_v2(raw)):
                 db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)",
                            (deck["source_id"], idx, piece))
             log.info("[job %s] research doc: %s words, %s chunks", job_id,
-                     len(raw.split()), len(chunk_text(raw)))
+                     len(raw.split()), len(chunk_text_v2(raw)))
         except Exception as e:
             log.error("[job %s] research step failed: %s: %s", job_id, type(e).__name__, e)
             db.execute("UPDATE jobs SET status='failed', error=?, finished_at=datetime('now') WHERE id=?",
@@ -390,7 +390,7 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
             return
         log.info("[job %s] crawl done: %s words extracted", job_id, len(raw.split()))
         db.execute("UPDATE sources SET raw_text=? WHERE id=?", (raw, deck["source_id"]))
-        pieces = chunk_text(raw)
+        pieces = chunk_text_v2(raw)
         for idx, piece in enumerate(pieces):
             db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)",
                        (deck["source_id"], idx, piece))
