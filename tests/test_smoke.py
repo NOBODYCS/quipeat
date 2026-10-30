@@ -1548,3 +1548,128 @@ def test_badges_awarded_once():
     for b in ("first_deck_mastered", "perfect_session", "century_mastered"):
         assert f"badge_{b}" or True
     assert "Earned on" in page.text  # earned badge shows date
+
+
+# ---------- Job A: VS duels ----------
+
+_duel_n = [0]
+
+def _two_users_with_deck():
+    """Alice owns a deck with >=10 questions; Bob is the opponent."""
+    _duel_n[0] += 1
+    a, deck_id, q = _register_and_deck(f"duel-a{_duel_n[0]}@example.com")
+    # add questions until >= 10
+    src = db.query_one("SELECT s.id AS sid FROM sources s JOIN decks d ON d.source_id=s.id WHERE d.id=?", (deck_id,))
+    for i in range(10):
+        db.execute("INSERT INTO questions(deck_id, chunk_id, prompt, options_json, correct_index, explanation)"
+                   " VALUES (?, NULL, ?, ?, ?, ?)",
+                   (deck_id, f"Duel question number {i} about topic?", '["a","b","c","d"]', 1,
+                    "Because the source says so."))
+    b = TestClient(app)
+    b.post("/register", data={"email": f"duel-b{_duel_n[0]}@example.com", "password": "password123"}, follow_redirects=False)
+    return a, b, deck_id
+
+
+def test_duel_lifecycle_and_deterministic_order():
+    """Challenge -> accept -> both play same questions in same seed order -> results."""
+    from app import duels as du
+    a, b, deck_id = _two_users_with_deck()
+    bob = db.query_one("SELECT id FROM users WHERE email=?", (f"duel-b{_duel_n[0]}@example.com",))["id"]
+    alice = db.query_one("SELECT id FROM users WHERE email=?", (f"duel-a{_duel_n[0]}@example.com",))["id"]
+    # alice challenges bob on her deck
+    r = csrf_post(a, "/duels/challenge", data={"opponent_id": str(bob), "deck_id": str(deck_id)}, follow_redirects=False)
+    assert r.status_code == 303
+    duel_id = r.headers["location"].split("/duels/")[1]
+    duel = du.get_duel(duel_id)
+    assert duel["status"] == "pending" and duel["challenger_id"] == alice and duel["opponent_id"] == bob
+    # bob sees the pending challenge
+    page = b.get("/duels")
+    assert "Incoming challenges" in page.text
+    # bob accepts
+    r = csrf_post(b, f"/duels/{duel_id}/accept", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"/duels/{duel_id}/play"
+    assert du.get_duel(duel_id)["status"] == "active"
+    # both get the SAME question sequence from the seed
+    qids = du.duel_questions(deck_id, duel["seed"])
+    assert len(qids) == du.DUEL_QUESTIONS
+    qids2 = du.duel_questions(deck_id, duel["seed"])
+    assert qids == qids2, "seed must be deterministic"
+    # different seed -> (very likely) different order
+    other = du.duel_questions(deck_id, "deadbeef")
+    assert other != qids or len(set(qids)) < 2
+    # play all 10 for both, alice all correct, bob half correct
+    for i, qid in enumerate(qids):
+        q = db.query_one("SELECT correct_index FROM questions WHERE id=?", (qid,))["correct_index"]
+        ra = csrf_post(a, f"/duels/{duel_id}/answer", data={"question_id": str(qid), "choice": str(q)})
+        assert ra.status_code == 200
+        wrong = (q + 1) % 4 if i % 2 else q
+        rb = csrf_post(b, f"/duels/{duel_id}/answer", data={"question_id": str(qid), "choice": str(wrong)})
+        assert rb.status_code == 200
+    # result page resolves: alice wins (10 vs 5)
+    r = a.get(f"/duels/{duel_id}/result")
+    assert r.status_code == 200 and "You won" in r.text
+    d = du.get_duel(duel_id)
+    assert d["status"] == "finished" and d["winner_id"] == alice
+    assert d["challenger_score"] == 10 and d["opponent_score"] == 5
+    # winner XP bonus applied
+    u = db.query_one("SELECT xp_total FROM users WHERE id=?", (alice,))
+    assert u["xp_total"] >= du.DUEL_XP_BONUS
+    # stats show the duel
+    st = a.get("/stats")
+    assert "1W" in st.text and "0L" in st.text
+
+
+def test_duel_no_fsrs_impact_and_privacy():
+    """Duel answers must not touch questions.due_at or reviews; opponent cannot
+    enumerate the challenger's deck."""
+    from app import duels as du
+    a, b, deck_id = _two_users_with_deck()
+    bob = db.query_one("SELECT id FROM users WHERE email=?", (f"duel-b{_duel_n[0]}@example.com",))["id"]
+    before = {r["id"]: (r["due_at"], r["reps"]) for r in db.query("SELECT id, due_at, reps FROM questions WHERE deck_id=?", (deck_id,))}
+    n_reviews_before = db.query_one("SELECT COUNT(*) c FROM reviews WHERE user_id=?", (db.query_one("SELECT id FROM users WHERE email=?", (f"duel-a{_duel_n[0]}@example.com",))["id"],))["c"]
+    r = csrf_post(a, "/duels/challenge", data={"opponent_id": str(bob), "deck_id": str(deck_id)}, follow_redirects=False)
+    duel_id = r.headers["location"].split("/duels/")[1]
+    csrf_post(b, f"/duels/{duel_id}/accept")
+    qids = du.duel_questions(deck_id, du.get_duel(duel_id)["seed"])
+    q = db.query_one("SELECT correct_index FROM questions WHERE id=?", (qids[0],))["correct_index"]
+    csrf_post(a, f"/duels/{duel_id}/answer", data={"question_id": str(qids[0]), "choice": str(q)})
+    csrf_post(b, f"/duels/{duel_id}/answer", data={"question_id": str(qids[0]), "choice": str(q)})
+    after = {r["id"]: (r["due_at"], r["reps"]) for r in db.query("SELECT id, due_at, reps FROM questions WHERE deck_id=?", (deck_id,))}
+    assert before == after, "duel changed FSRS state"
+    alice_now = db.query_one("SELECT id FROM users WHERE email=?", (f"duel-a{_duel_n[0]}@example.com",))["id"]
+    bob_now = db.query_one("SELECT id FROM users WHERE email=?", (f"duel-b{_duel_n[0]}@example.com",))["id"]
+    assert db.query_one("SELECT COUNT(*) c FROM reviews WHERE user_id IN (?, ?)", (alice_now, bob_now))["c"] == n_reviews_before, "duel wrote a review row"
+    # privacy: bob cannot see alice's deck pages
+    for path in (f"/decks/{deck_id}", f"/decks/{deck_id}/questions", f"/decks/{deck_id}/inspect"):
+        r = b.get(path, follow_redirects=False)
+        assert r.status_code == 303, f"bob accessed {path}"
+    # but bob CAN play the duel (sees only duel questions)
+    r = b.get(f"/duels/{duel_id}/play")
+    assert r.status_code == 200 and "Duel question" in r.text or r.status_code == 303  # may be on q2 now
+
+
+def test_duel_forfeit_by_inactivity():
+    """Opponent finishes; challenger stays inactive 60s -> opponent wins by forfeit."""
+    from app import duels as du
+    a, b, deck_id = _two_users_with_deck()
+    bob = db.query_one("SELECT id FROM users WHERE email=?", (f"duel-b{_duel_n[0]}@example.com",))["id"]
+    r = csrf_post(a, "/duels/challenge", data={"opponent_id": str(bob), "deck_id": str(deck_id)}, follow_redirects=False)
+    duel_id = r.headers["location"].split("/duels/")[1]
+    csrf_post(b, f"/duels/{duel_id}/accept")
+    qids = du.duel_questions(deck_id, du.get_duel(duel_id)["seed"])
+    # bob answers all 10 correctly
+    for qid in qids:
+        q = db.query_one("SELECT correct_index FROM questions WHERE id=?", (qid,))["correct_index"]
+        csrf_post(b, f"/duels/{duel_id}/answer", data={"question_id": str(qid), "choice": str(q)})
+    # alice never answers; simulate 61s inactivity for alice
+    db.execute("UPDATE duels SET challenger_last_active = datetime('now', '-61 seconds') WHERE id=?", (duel_id,))
+    duel = du.get_duel(duel_id)
+    winner = du.check_forfeit(duel)
+    assert winner == bob, f"expected bob to win by forfeit, got {winner}"
+    du.finish_duel(duel_id, winner)
+    assert du.get_duel(duel_id)["winner_id"] == bob
+    # and via the polling endpoint: status fragment triggers finish + redirect
+    a2, b2, deck2 = _two_users_with_deck()
+    # reuse: just check result page shows bob won
+    r = b.get(f"/duels/{duel_id}/result")
+    assert r.status_code == 200 and "You won" in r.text

@@ -1,0 +1,23 @@
+<div id="duel-area">
+  {% include "_duel_status.html" %}
+  <div class="card-grad p-6 mt-4">
+    <div class="mb-3 flex items-center gap-2 text-sm font-semibold">
+      <span class="chip {{ 'chip-mint' if res.correct else 'chip-red' }}">{{ t("correct") }} ✓{% if not res.correct %}{{ t("not_quite") }}{% endif %}</span>
+      <span class="text-xs text-mist-400">{{ t("duel_correct_answer") }}: {{ "ABCD"[q.correct_index] }}) {{ q.options[q.correct_index] }}</span>
+    </div>
+    <p class="text-sm font-semibold mb-2">{{ q.prompt }}</p>
+    <ul class="mb-4 space-y-1.5 text-sm">
+      {% for opt in q.options %}
+      <li class="rounded-lg border px-3 py-2 {% if loop.index0 == q.correct_index %}border-mint-400/60 bg-mint-400/10 text-mint-200{% elif loop.index0 == choice %}border-red-700 bg-red-950/50 text-red-200{% else %}border-ink-700 bg-ink-900 text-mist-400{% endif %}">
+        <span class="font-bold mr-2">{{ "ABCD"[loop.index0] }})</span>{{ opt }}{% if loop.index0 == q.correct_index %} ✓{% endif %}{% if loop.index0 == choice and not res.correct %} ✗{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% if q.explanation %}<p class="text-sm text-mist-300 mb-4">{{ q.explanation }}</p>{% endif %}
+    {% if res.finished %}
+    <a href="/duels/{{ duel.id }}/waiting" class="btn-primary w-full">{{ t("duel_done_waiting") }} →</a>
+    {% else %}
+    <a href="/duels/{{ duel.id }}/play" class="btn-primary w-full">{{ t("next_question") }} →</a>
+    {% endif %}
+  </div>
+</div>

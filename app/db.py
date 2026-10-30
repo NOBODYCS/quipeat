@@ -102,6 +102,38 @@ def init_db() -> None:
             conn.execute("ALTER TABLE study_sessions ADD COLUMN best_combo INTEGER NOT NULL DEFAULT 0")
         if "wrong_ids" not in scols:
             conn.execute("ALTER TABLE study_sessions ADD COLUMN wrong_ids TEXT NOT NULL DEFAULT ''")
+        # VS duels: match state lives in tables, not memory.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS duels ("
+            " id TEXT PRIMARY KEY,"
+            " challenger_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+            " opponent_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+            " deck_id INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,"
+            " seed TEXT NOT NULL,"
+            " status TEXT NOT NULL DEFAULT 'pending',"  # pending|active|finished
+            " winner_id INTEGER REFERENCES users(id),"
+            " challenger_score INTEGER NOT NULL DEFAULT 0,"
+            " opponent_score INTEGER NOT NULL DEFAULT 0,"
+            " challenger_idx INTEGER NOT NULL DEFAULT 0,"  # next question index per player
+            " opponent_idx INTEGER NOT NULL DEFAULT 0,"
+            " challenger_last_active TEXT,"
+            " opponent_last_active TEXT,"
+            " created_at TEXT NOT NULL DEFAULT (datetime('now')),"
+            " started_at TEXT,"
+            " finished_at TEXT)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_duels_opponent ON duels(opponent_id, status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_duels_challenger ON duels(challenger_id, status)")
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS duel_answers ("
+            " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            " duel_id TEXT NOT NULL REFERENCES duels(id) ON DELETE CASCADE,"
+            " user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+            " question_id INTEGER NOT NULL,"
+            " q_index INTEGER NOT NULL,"
+            " choice INTEGER NOT NULL,"
+            " correct INTEGER NOT NULL,"
+            " answered_at TEXT NOT NULL DEFAULT (datetime('now')))")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_duel_answers_duel ON duel_answers(duel_id, user_id)")
         jcols = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()}
         if "mode" not in jcols:
             conn.execute("ALTER TABLE jobs ADD COLUMN mode TEXT NOT NULL DEFAULT 'replace'")

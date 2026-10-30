@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ t("duels_title") }} · Quipeat{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-md text-center mt-10" id="duel-area">
+  <div class="text-5xl mb-4">⏳</div>
+  <h1 class="text-2xl font-extrabold mb-1">{{ t("duel_waiting_title") }}</h1>
+  <p class="text-mist-400 mb-6">{{ t("duel_waiting_body", score=state.my_score) }}</p>
+  {% include "_duel_status.html" %}
+</div>
+{% endblock %}

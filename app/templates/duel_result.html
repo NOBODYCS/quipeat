@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ t("duels_title") }} · Quipeat{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-md text-center mt-10">
+  <div class="text-5xl mb-4">{% if am_winner %}🏆{% else %}💀{% endif %}</div>
+  <h1 class="text-2xl font-extrabold mb-1">{% if am_winner %}{{ t("you_won") }}{% else %}{{ t("you_lost") }}{% endif %}</h1>
+  <p class="text-mist-400 mb-6">{{ deck.title }} · +{{ xp_bonus }} XP {% if am_winner %}{{ t("duel_bonus") }}{% endif %}</p>
+  <div class="card p-6 grid grid-cols-2 gap-3 mb-6 text-left">
+    {% for pid, s in per_player.items() %}
+    <div class="rounded-xl border border-ink-700 bg-ink-900 p-3 {% if duel.winner_id == pid %}border-mint-400/50{% endif %}">
+      <div class="font-bold text-sm">{{ names[pid] }}{% if duel.winner_id == pid %} 🏆{% endif %}</div>
+      <div class="text-2xl font-extrabold text-white mt-1">{{ s.correct }}/{{ s.answered }}</div>
+      <div class="text-xs text-mist-400">{{ s.accuracy }}% · {{ duel.challenger_score if pid == duel.challenger_id else duel.opponent_score }} {{ t("pts") }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <a href="/duels" class="btn-primary w-full">{{ t("nav_duels") }}</a>
+</div>
+{% endblock %}

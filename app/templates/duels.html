@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ t("duels_title") }} · Quipeat{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-extrabold mb-1">⚔️ {{ t("duels_title") }}</h1>
+<p class="text-sm text-mist-400 mb-6">{{ t("duels_subtitle", wins=duel_stats.wins, losses=duel_stats.losses) }}</p>
+
+<div class="card p-5 mb-6">
+  <h2 class="text-sm font-extrabold mb-3">{{ t("challenge_someone") }}</h2>
+  <form method="post" action="/duels/challenge" class="flex flex-wrap gap-2">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <select name="opponent_id" class="input !w-auto" required>
+      {% for o in others %}<option value="{{ o.id }}">{{ o.display_name or o.email }}</option>{% endfor %}
+    </select>
+    <select name="deck_id" class="input !w-auto" required>
+      {% for d in my_decks %}<option value="{{ d.id }}">{{ d.title }}</option>{% endfor %}
+    </select>
+    <button class="btn-primary btn-sm">{{ t("send_challenge") }}</button>
+  </form>
+</div>
+
+{% if incoming %}
+<div class="card p-5 mb-6 border-volt-600/40">
+  <h2 class="text-sm font-extrabold mb-3">{{ t("incoming_challenges") }}</h2>
+  {% for d in incoming %}
+  <div class="flex flex-wrap items-center gap-3 border-t border-ink-750 pt-3 mt-3 first:border-0 first:pt-0 first:mt-0">
+    <span class="text-sm"><b>{{ d.challenger_name }}</b> · {{ d.deck_title }}</span>
+    <span class="ml-auto flex gap-2">
+      <form method="post" action="/duels/{{ d.id }}/accept"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn-primary btn-sm">{{ t("accept") }}</button></form>
+      <form method="post" action="/duels/{{ d.id }}/decline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn-ghost btn-sm">{{ t("decline") }}</button></form>
+    </span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if active %}
+<div class="card p-5 mb-6">
+  <h2 class="text-sm font-extrabold mb-3">{{ t("active_duels") }}</h2>
+  {% for d in active %}
+  <a href="/duels/{{ d.id }}/play" class="flex items-center gap-3 border-t border-ink-750 pt-3 mt-3 first:border-0 first:pt-0 first:mt-0 hover:text-volt-300">
+    <span class="text-sm"><b>{{ d.challenger_name }}</b> · {{ d.deck_title }}</span>
+    <span class="ml-auto text-xs text-mist-400">{{ d.challenger_score }} : {{ d.opponent_score }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if history %}
+<div class="card p-5">
+  <h2 class="text-sm font-extrabold mb-3">{{ t("duel_history") }}</h2>
+  {% for d in history %}
+  <a href="/duels/{{ d.id }}/result" class="flex flex-wrap items-center gap-2 border-t border-ink-750 pt-3 mt-3 first:border-0 first:pt-0 first:mt-0 text-sm">
+    <span>{{ d.deck_title }}</span>
+    <span class="text-xs text-mist-500">{{ d.challenger_name }} vs {{ d.opponent_name }}</span>
+    <span class="ml-auto chip {% if d.winner_id == user.id %}chip-mint{% else %}chip-red{% endif %}">{% if d.winner_id == user.id %}{{ t("won") }}{% else %}{{ t("lost") }}{% endif %} · {{ d.challenger_score }}:{{ d.opponent_score }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ t("duels_title") }} · Quipeat{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-2xl" id="duel-area">
+  {% include "_duel_status.html" %}
+  <div class="card-grad p-6 mt-4">
+    <p class="text-xs text-mist-400 mb-2">{{ t("duel_question_n", n=q_index + 1, total=q_total) }}</p>
+    <p class="text-lg font-medium mb-5">{{ q.prompt }}</p>
+    <form hx-post="/duels/{{ duel.id }}/answer" hx-target="#duel-area" hx-swap="outerHTML" class="space-y-2">
+      <input type="hidden" name="question_id" value="{{ q.id }}">
+      {% for opt in q.options %}
+      <button type="submit" name="choice" value="{{ loop.index0 }}" class="opt-btn">
+        <span class="chip !py-0.5 mr-2">{{ loop.index0 + 1 }}</span>{{ opt }}
+      </button>
+      {% endfor %}
+    </form>
+  </div>
+</div>
+<script>
+  document.addEventListener('keydown', function (e) {
+    var n = parseInt(e.key);
+    if (n >= 1 && n <= 4) {
+      var btns = document.querySelectorAll('#duel-area button[name="choice"]');
+      if (btns[n - 1]) btns[n - 1].click();
+    }
+  });
+</script>
+{% endblock %}

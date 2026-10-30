@@ -502,6 +502,197 @@ async def deck_inspect(request: Request, deck_id: int):
     return page(request, "inspect.html", questions=items, deck=deck)
 
 
+# ---------- VS duels ----------
+
+@app.get("/duels", response_class=HTMLResponse)
+async def duels_page(request: Request):
+    user = require_user(request)
+    from . import duels as du
+    incoming = db.query(
+        "SELECT d.*, u.display_name AS challenger_name, dk.title AS deck_title"
+        " FROM duels d JOIN users u ON u.id = d.challenger_id JOIN decks dk ON dk.id = d.deck_id"
+        " WHERE d.opponent_id = ? AND d.status = 'pending' ORDER BY d.created_at DESC", (user["id"],))
+    active = db.query(
+        "SELECT d.*, u.display_name AS challenger_name, dk.title AS deck_title"
+        " FROM duels d JOIN users u ON u.id = d.challenger_id JOIN decks dk ON dk.id = d.deck_id"
+        " WHERE d.status = 'active' AND (d.challenger_id = ? OR d.opponent_id = ?) ORDER BY d.started_at DESC",
+        (user["id"], user["id"]))
+    history = db.query(
+        "SELECT d.*, uc.display_name AS challenger_name, uo.display_name AS opponent_name, dk.title AS deck_title"
+        " FROM duels d JOIN users uc ON uc.id = d.challenger_id JOIN users uo ON uo.id = d.opponent_id"
+        " JOIN decks dk ON dk.id = d.deck_id"
+        " WHERE d.status = 'finished' AND (d.challenger_id = ? OR d.opponent_id = ?) ORDER BY d.finished_at DESC LIMIT 20",
+        (user["id"], user["id"]))
+    my_decks = db.query("SELECT id, title FROM decks WHERE user_id = ? AND status = 'ready' ORDER BY title", (user["id"],))
+    others = db.query("SELECT id, email, display_name FROM users WHERE id != ? ORDER BY id", (user["id"],))
+    return page(request, "duels.html", incoming=incoming, active=active, history=history,
+                my_decks=my_decks, others=others, duel_stats=du.stats_for(user["id"]))
+
+
+@app.post("/duels/challenge")
+async def create_challenge(request: Request, opponent_id: int = Form(...), deck_id: int = Form(...)):
+    user = require_user(request)
+    deck = owned_deck(user, deck_id)
+    if not deck or deck["status"] != "ready":
+        return RedirectResponse("/duels", status_code=303)
+    opp = db.query_one("SELECT id FROM users WHERE id = ?", (opponent_id,))
+    if not opp or opp["id"] == user["id"]:
+        return RedirectResponse("/duels", status_code=303)
+    from . import duels as du
+    duel_id = du.new_duel(user["id"], opp["id"], deck_id)
+    return RedirectResponse(f"/duels/{duel_id}", status_code=303)
+
+
+@app.post("/duels/{duel_id}/accept")
+async def accept_duel(request: Request, duel_id: str):
+    user = require_user(request)
+    from . import duels as du
+    duel = du.get_duel(duel_id)
+    if not duel or duel["opponent_id"] != user["id"] or duel["status"] != "pending":
+        return RedirectResponse("/duels", status_code=303)
+    db.execute("UPDATE duels SET status='active', started_at=datetime('now'),"
+               " challenger_last_active=datetime('now'), opponent_last_active=datetime('now') WHERE id=?",
+               (duel_id,))
+    return RedirectResponse(f"/duels/{duel_id}/play", status_code=303)
+
+
+@app.post("/duels/{duel_id}/decline")
+async def decline_duel(request: Request, duel_id: str):
+    user = require_user(request)
+    from . import duels as du
+    duel = du.get_duel(duel_id)
+    if not duel or duel["opponent_id"] != user["id"] or duel["status"] != "pending":
+        return RedirectResponse("/duels", status_code=303)
+    du.finish_duel(duel_id, duel["challenger_id"])  # declined = challenger wins by forfeit
+    return RedirectResponse("/duels", status_code=303)
+
+
+@app.get("/duels/{duel_id}", response_class=HTMLResponse)
+async def duel_lobby(request: Request, duel_id: str):
+    user = require_user(request)
+    from . import duels as du
+    duel = du.get_duel(duel_id)
+    if not duel or not du.is_participant(duel, user["id"]):
+        return RedirectResponse("/duels", status_code=303)
+    deck = db.query_one("SELECT title FROM decks WHERE id = ?", (duel["deck_id"],))
+    opp = db.query_one("SELECT id, display_name, email FROM users WHERE id = ?",
+                       (duel["opponent_id"] if duel["challenger_id"] == user["id"] else duel["challenger_id"],))
+    challenger = db.query_one("SELECT id, display_name, email FROM users WHERE id = ?", (duel["challenger_id"],))
+    return page(request, "duel_lobby.html", duel=duel, deck=deck, opp=opp, challenger=challenger,
+                am_challenger=duel["challenger_id"] == user["id"])
+
+
+@app.get("/duels/{duel_id}/play", response_class=HTMLResponse)
+async def duel_play(request: Request, duel_id: str):
+    user = require_user(request)
+    from . import duels as du
+    duel = du.get_duel(duel_id)
+    if not duel or not du.is_participant(duel, user["id"]) or duel["status"] != "active":
+        return RedirectResponse(f"/duels/{duel_id}", status_code=303)
+    winner = du.check_forfeit(duel)
+    if winner is not None:
+        du.finish_duel(duel_id, winner)
+        return RedirectResponse(f"/duels/{duel_id}/result", status_code=303)
+    qids = du.duel_questions(duel["deck_id"], duel["seed"])
+    state = du.duel_state_for(duel, user["id"])
+    if state["my_idx"] >= du.DUEL_QUESTIONS:
+        return RedirectResponse(f"/duels/{duel_id}/waiting", status_code=303)
+    q = db.query_one("SELECT * FROM questions WHERE id = ?", (qids[state["my_idx"]],))
+    if not q:
+        return RedirectResponse(f"/duels/{duel_id}/waiting", status_code=303)
+    # touch activity
+    side = state["side"]
+    db.execute(f"UPDATE duels SET {side}_last_active = ? WHERE id = ?", (db.now_utc(), duel_id))
+    deck = db.query_one("SELECT title FROM decks WHERE id = ?", (duel["deck_id"],))
+    return page(request, "duel_play.html", duel=duel, deck=deck,
+                q={**dict(q), "options": json.loads(q["options_json"])},
+                state=state, q_index=state["my_idx"], q_total=du.DUEL_QUESTIONS)
+
+
+@app.post("/duels/{duel_id}/answer")
+async def duel_answer(request: Request, duel_id: str, question_id: int = Form(...), choice: int = Form(...)):
+    user = require_user(request)
+    from . import duels as du
+    duel = du.get_duel(duel_id)
+    if not duel or not du.is_participant(duel, user["id"]) or duel["status"] != "active":
+        return RedirectResponse(f"/duels/{duel_id}", status_code=303)
+    qids = du.duel_questions(duel["deck_id"], duel["seed"])
+    state = du.duel_state_for(duel, user["id"])
+    if state["my_idx"] >= len(qids) or qids[state["my_idx"]] != question_id:
+        return RedirectResponse(f"/duels/{duel_id}/play", status_code=303)
+    res = du.record_answer(duel_id, user["id"], question_id, choice)
+    # fragment: correctness + progress; polling fragment does the rest
+    q = db.query_one("SELECT * FROM questions WHERE id = ?", (question_id,))
+    return page(request, "_duel_feedback.html", duel=duel, res=res,
+                q={**dict(q), "options": json.loads(q["options_json"])}, choice=choice,
+                state=du.duel_state_for(du.get_duel(duel_id), user["id"]))
+
+
+@app.get("/duels/{duel_id}/status", response_class=HTMLResponse)
+async def duel_status(request: Request, duel_id: str):
+    """Polling fragment: live scores + indexes for both players."""
+    user = require_user(request)
+    from . import duels as du
+    duel = du.get_duel(duel_id)
+    if not duel or not du.is_participant(duel, user["id"]):
+        return HTMLResponse("")
+    winner = du.check_forfeit(duel)
+    if winner is not None and duel["status"] == "active":
+        du.finish_duel(duel_id, winner)
+        duel = du.get_duel(duel_id)
+    if duel["status"] == "finished":
+        return HTMLResponse("", headers={"HX-Redirect": f"/duels/{duel_id}/result"})
+    state = du.duel_state_for(duel, user["id"])
+    return page(request, "_duel_status.html", duel=duel, state=state, q_total=du.DUEL_QUESTIONS)
+
+
+@app.get("/duels/{duel_id}/waiting", response_class=HTMLResponse)
+async def duel_waiting(request: Request, duel_id: str):
+    """You finished your 10; poll until opponent finishes or forfeits."""
+    user = require_user(request)
+    from . import duels as du
+    duel = du.get_duel(duel_id)
+    if not duel or not du.is_participant(duel, user["id"]):
+        return RedirectResponse("/duels", status_code=303)
+    side = "challenger" if duel["challenger_id"] == user["id"] else "opponent"
+    db.execute(f"UPDATE duels SET {side}_last_active = ? WHERE id = ?", (db.now_utc(), duel_id))
+    state = du.duel_state_for(duel, user["id"])
+    deck = db.query_one("SELECT title FROM decks WHERE id = ?", (duel["deck_id"],))
+    return page(request, "duel_waiting.html", duel=duel, deck=deck, state=state)
+
+
+@app.get("/duels/{duel_id}/result", response_class=HTMLResponse)
+async def duel_result(request: Request, duel_id: str):
+    user = require_user(request)
+    from . import duels as du
+    duel = du.get_duel(duel_id)
+    if not duel or not du.is_participant(duel, user["id"]):
+        return RedirectResponse("/duels", status_code=303)
+    if duel["status"] == "active":
+        winner = du.check_forfeit(duel)
+        if winner is not None:
+            du.finish_duel(duel_id, winner)
+            duel = du.get_duel(duel_id)
+        elif all(duel[f"{s}_idx"] >= du.DUEL_QUESTIONS for s in ("challenger", "opponent")):
+            # both finished: higher score wins, tie -> challenger
+            w = duel["challenger_id"] if duel["challenger_score"] >= duel["opponent_score"] else duel["opponent_id"]
+            du.finish_duel(duel_id, w)
+            duel = du.get_duel(duel_id)
+    if duel["status"] != "finished":
+        return RedirectResponse(f"/duels/{duel_id}/play", status_code=303)
+    deck = db.query_one("SELECT title FROM decks WHERE id = ?", (duel["deck_id"],))
+    rows = db.query("SELECT user_id, COUNT(*) n, SUM(correct) ok FROM duel_answers WHERE duel_id = ? GROUP BY user_id",
+                    (duel_id,))
+    per_player = {}
+    for r in rows:
+        per_player[r["user_id"]] = {"answered": r["n"], "correct": r["ok"],
+                                     "accuracy": round(100.0 * r["ok"] / r["n"]) if r["n"] else 0}
+    names = {u["id"]: (u["display_name"] or u["email"]) for u in db.query(
+        "SELECT id, display_name, email FROM users WHERE id IN (?, ?)", (duel["challenger_id"], duel["opponent_id"]))}
+    return page(request, "duel_result.html", duel=duel, deck=deck, per_player=per_player, names=names,
+                am_winner=duel["winner_id"] == user["id"], xp_bonus=du.DUEL_XP_BONUS)
+
+
 # ---------- study ----------
 
 @app.get("/study", response_class=HTMLResponse)
@@ -854,8 +1045,10 @@ async def stats(request: Request):
     recent = db.query(
         "SELECT DATE(reviewed_at) d, COUNT(*) c FROM reviews WHERE user_id = ?"
         " GROUP BY d ORDER BY d DESC LIMIT 14", (user["id"],))
+    from . import duels as du
     return page(request, "stats.html", total_q=total_q, total_r=total_r, accuracy=acc or 0,
-                badges=badges, recent=recent, all_badges=list(gamify.BADGES))
+                badges=badges, recent=recent, all_badges=list(gamify.BADGES),
+                duel_stats=du.stats_for(user["id"]))
 
 
 @app.get("/profile", response_class=HTMLResponse)

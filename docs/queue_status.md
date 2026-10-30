@@ -9,17 +9,17 @@ pattern exists (`hx-trigger="every 2s"` in `_job_status.html`); auth via
 session cookie + `require_user`/`owned_deck`; gamify.award_xp exists; tests
 60 green with LLM_MOCK=true.
 
-## Job A — 1v1 VS duels
+## Job A — 1v1 VS duels — DONE (commit TBD)
 
-- [ ] Schema: duels + duel_answers tables (idempotent in db.init_db)
-- [ ] Challenge flow: pick user + own deck -> pending challenge for opponent
-- [ ] Accept -> both play same 10 questions in seed-shuffled order (seed on duel row)
-- [ ] Live polling fragment (2-3s hx-trigger) showing opponent score + question index
-- [ ] Forfeit: 60s inactivity after start, or after opponent finishes -> other player wins
-- [ ] Results screen: winner, scores, accuracy, XP bonus via gamify.award_xp
-- [ ] No FSRS/reviews impact; deck privacy (opponent sees title + duel questions only)
-- [ ] Stats page: duel wins/losses
-- [ ] Tests: lifecycle, deterministic seed sequence, forfeit, no-FSRS, privacy; en/pl strings
+- [x] Schema: duels + duel_answers tables (idempotent in db.init_db)
+- [x] Challenge flow: pick user + own deck -> pending challenge for opponent
+- [x] Accept -> both play same 10 questions in seed-shuffled order (seed on duel row)
+- [x] Live polling fragment (every 2s hx-trigger) showing opponent score + question index
+- [x] Forfeit: 60s inactivity after start / after opponent finishes -> other player wins
+- [x] Results screen: winner, scores, accuracy, XP bonus via gamify.award_xp (flat 50)
+- [x] No FSRS/reviews impact (tested); deck privacy (opponent sees title + duel questions only, tested)
+- [x] Stats page: duel wins/losses
+- [x] Tests green: lifecycle, deterministic seed sequence, forfeit, no-FSRS, privacy; en/pl strings
 
 ## Job B — topic pack library
 

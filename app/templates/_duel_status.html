@@ -1,0 +1,7 @@
+<div id="duel-status" {% if duel.status == 'active' %}hx-get="/duels/{{ duel.id }}/status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}
+     class="flex flex-wrap items-center gap-2 text-sm card p-3">
+  <span class="chip chip-volt">⚔️ {{ deck_title or '' }}</span>
+  <span class="chip">{{ t("you") }}: {{ state.my_score }} · {{ t("duel_q") }} {{ state.my_idx }}/{{ q_total }}</span>
+  <span class="chip chip-flame">{{ t("opponent") }}: {{ state.opp_score }} · {{ t("duel_q") }} {{ state.opp_idx }}/{{ q_total }}</span>
+  {% if duel.status == 'finished' %}<span class="chip chip-mint">{{ t("duel_finished") }}</span>{% endif %}
+</div>

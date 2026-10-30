@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ t("duels_title") }} · Quipeat{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-md text-center mt-10">
+  <div class="text-5xl mb-4">⚔️</div>
+  <h1 class="text-2xl font-extrabold mb-1">{{ deck.title }}</h1>
+  <p class="text-mist-400 mb-6">{{ t("duel_lobby_body", challenger=challenger.display_name or challenger.email, opp=opp.display_name or opp.email) }}</p>
+  {% if duel.status == 'pending' %}
+    {% if am_challenger %}
+    <p class="text-sm text-mist-400 mb-4">{{ t("waiting_for_accept") }}</p>
+    <div id="duel-lobby-status" hx-get="/duels/{{ duel.id }}/status" hx-trigger="every 2s" hx-swap="outerHTML"></div>
+    {% else %}
+    <form method="post" action="/duels/{{ duel.id }}/accept">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn-primary w-full">{{ t("accept_duel") }}</button>
+    </form>
+    <form method="post" action="/duels/{{ duel.id }}/decline" class="mt-2">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn-ghost w-full">{{ t("decline") }}</button>
+    </form>
+    {% endif %}
+  {% else %}
+  <a href="/duels/{{ duel.id }}/play" class="btn-primary w-full">{{ t("start_duel") }}</a>
+  {% endif %}
+  <a href="/duels" class="block mt-4 text-sm text-mist-400 hover:text-white">← {{ t("nav_duels") }}</a>
+</div>
+{% endblock %}
