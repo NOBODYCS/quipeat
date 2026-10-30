@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Settings · Quipeat{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Settings</h1>
+{% if msg %}<div class="mb-4 rounded-lg bg-emerald-950/60 border border-emerald-800 px-4 py-2 text-sm text-emerald-300">{{ msg }}</div>{% endif %}
+{% if error %}<div class="mb-4 rounded-lg bg-red-950/60 border border-red-800 px-4 py-2 text-sm text-red-300">{{ error }}</div>{% endif %}
+
+<div class="rounded-xl border border-slate-800 bg-slate-900 p-5 mb-6">
+  <h2 class="font-semibold mb-1">Connect an LLM</h2>
+  <p class="text-sm text-slate-400 mb-4">Paste your own API key. It is stored encrypted and only used server-side to generate questions. OpenRouter gives you access to many models with one key; Mistral uses your Mistral Studio key directly.</p>
+  <form method="post" action="/settings/keys" class="grid gap-3 sm:grid-cols-4">
+    <select name="provider" id="provider" class="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm">
+      {% for p in providers %}<option value="{{ p }}" {% if settings_row and settings_row.default_provider == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+    </select>
+    <select name="model" id="model" class="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm sm:col-span-1">
+      {% for p, models in providers.items() %}
+        {% for m in models %}<option value="{{ m }}" data-provider="{{ p }}" {% if settings_row and settings_row.default_model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+      {% endfor %}
+    </select>
+    <input name="api_key" type="password" autocomplete="off" placeholder="API key" required
+           class="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm sm:col-span-1">
+    <input name="label" type="text" placeholder="Label (optional)" class="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm">
+    <button type="submit" class="sm:col-span-4 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold py-2 text-sm">Save key &amp; set active</button>
+  </form>
+</div>
+
+<div class="rounded-xl border border-slate-800 bg-slate-900 p-5 mb-6">
+  <h2 class="font-semibold mb-3">Saved keys</h2>
+  {% if not keys %}
+  <p class="text-sm text-slate-400">No keys yet.</p>
+  {% else %}
+  <ul class="space-y-2">
+    {% for k in keys %}
+    <li class="flex flex-wrap items-center gap-2 text-sm border border-slate-800 rounded-lg px-3 py-2">
+      <span class="font-medium">{{ k.provider }}</span>
+      <span class="text-slate-400">{{ k.masked }}</span>
+      {% if k.label %}<span class="text-slate-500">({{ k.label }})</span>{% endif %}
+      {% if settings_row and settings_row.active_key_id == k.id %}<span class="text-xs rounded bg-emerald-900/60 text-emerald-300 px-2 py-0.5">active</span>{% endif %}
+      <span class="ml-auto flex gap-2">
+        {% if not (settings_row and settings_row.active_key_id == k.id) %}
+        <form method="post" action="/settings/keys/{{ k.id }}/activate">
+          <input type="hidden" name="provider" value="{{ k.provider }}">
+          <input type="hidden" name="model" value="{{ settings_row.default_model if settings_row else '' }}">
+          <button class="text-xs text-emerald-400 hover:underline">Set active</button>
+        </form>
+        {% endif %}
+        <form method="post" action="/settings/keys/{{ k.id }}/delete"><button class="text-xs text-red-400 hover:underline">Delete</button></form>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+
+<div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+  <h2 class="font-semibold mb-3">Default model</h2>
+  <form method="post" action="/settings/model" class="flex gap-2">
+    <select name="provider" class="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm">
+      {% for p in providers %}<option value="{{ p }}" {% if settings_row and settings_row.default_provider == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+    </select>
+    <input name="model" type="text" value="{{ settings_row.default_model if settings_row else '' }}" placeholder="model id (or pick above)"
+           class="flex-1 rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm">
+    <button class="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-slate-500">Save</button>
+  </form>
+</div>
+<script>
+document.getElementById('provider').addEventListener('change', function () {
+  const sel = document.getElementById('model');
+  for (const opt of sel.options) opt.style.display = opt.dataset.provider === this.value ? '' : 'none';
+  const first = [...sel.options].find(o => o.dataset.provider === this.value && o.style.display !== 'none');
+  if (first) sel.value = first.value;
+});
+</script>
+{% endblock %}

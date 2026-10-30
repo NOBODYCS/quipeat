@@ -1,0 +1,9 @@
+.env
+.env.local
+__pycache__/
+*.pyc
+.venv/
+data/
+node_modules/
+app/static/css/app.css
+.pytest_cache/

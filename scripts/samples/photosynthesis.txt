@@ -1,0 +1,21 @@
+Photosynthesis is the process by which green plants, algae, and some bacteria convert
+light energy into chemical energy stored in glucose. It takes place mainly in the
+chloroplasts, inside organelles called thylakoids and the surrounding stroma.
+
+The overall equation is: 6 CO2 + 6 H2O + light energy -> C6H12O6 + 6 O2.
+
+Photosynthesis has two stages. The light-dependent reactions occur in the thylakoid
+membranes and split water molecules, releasing oxygen and producing ATP and NADPH.
+The Calvin cycle, or light-independent reactions, takes place in the stroma and uses
+ATP and NADPH to fix carbon dioxide into glucose. The key enzyme of carbon fixation is
+RuBisCO, which catalyzes the attachment of CO2 to ribulose bisphosphate (RuBP).
+
+C3 plants fix carbon directly in the Calvin cycle. C4 plants first fix CO2 into a
+four-carbon compound in mesophyll cells and then release it in bundle-sheath cells,
+which reduces photorespiration in hot, dry climates. CAM plants, such as cacti, open
+their stomata at night to conserve water and store CO2 as malate, releasing it during
+the day for the Calvin cycle.
+
+The rate of photosynthesis depends on light intensity, carbon dioxide concentration,
+and temperature. At low light, light is the limiting factor; beyond the light saturation
+point, CO2 or temperature usually limits the rate.

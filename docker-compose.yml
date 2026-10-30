@@ -1,0 +1,14 @@
+services:
+  quipeat:
+    build: .
+    container_name: quipeat
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - quipeat-data:/app/data
+    ports:
+      # LAN only. Remove/guard this if you ever place the app behind WireGuard-only routing.
+      - "${QUIPEAT_LAN_BIND:-127.0.0.1:8000}:8000"
+
+volumes:
+  quipeat-data:
