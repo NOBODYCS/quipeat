@@ -297,7 +297,7 @@ def test_generation_prompt_is_topic_aware():
 
     class SpyProvider(MockProvider):
         def chat(self, model, system, user, **kw):
-            if "quiz writer" in system:
+            if "quiz writer" in system or "expert quiz writer" in system:
                 sent["system"] = system
                 sent["user"] = user
             return super().chat(model, system, user, **kw)
@@ -321,8 +321,8 @@ def test_generation_prompt_is_topic_aware():
             time.sleep(0.2)
         assert job["status"] == "done"
         assert "LEARNING GOAL: The user wants to learn: Run Ansible playbooks" in sent["user"]
-        assert "Learning-goal relevance" in sent["system"]
-        assert "Audience" in sent["system"]
+        assert "quiz writer" in sent["system"]
+        assert "Wording rules" in sent["system"]
     finally:
         generation._get_provider = orig
 
@@ -553,7 +553,7 @@ def test_triage_prompt_is_sent_to_lld(monkeypatch):
                 break
             time.sleep(0.2)
         assert job["status"] == "done"
-        assert any("classify text excerpts" in sys for sys in sent["systems"]), sent["systems"]
+        assert any("classify excerpts" in sys.lower() or "learning material" in sys for sys in sent["systems"]), sent["systems"]
     finally:
         generation._get_provider = orig
 
@@ -1005,3 +1005,17 @@ def test_regen_modes_and_cross_run_dedup():
     assert job["status"] == "done" and job["mode"] == "replace"
     n2 = db.query_one("SELECT COUNT(*) c FROM questions WHERE deck_id=?", (deck_id,))["c"]
     assert n2 > 0 and n2 <= n1  # regenerated fresh, old ones gone
+
+
+def test_v2_prompts_contain_wording_and_clarity_rules():
+    """P0-4/P0-5: generate_v2 has wording rules, verify_v2 has clarity checks."""
+    from app.generation import _system_prompt, PROMPT_VERSION
+    assert PROMPT_VERSION == "v2"
+    gen = _system_prompt("generate")
+    for needle in ("40 words", "12 words", "double negative", "all of the above",
+                   "meta references", "parallel", "plausible confusions", "mandatory"):
+        assert needle.lower() in gen.lower(), f"generate_v2 missing: {needle}"
+    ver = _system_prompt("verify")
+    for needle in ("length", "convoluted", "double negative", "meta references",
+                   "parallelism", "exactly one defensible", "notes"):
+        assert needle.lower() in ver.lower(), f"verify_v2 missing: {needle}"

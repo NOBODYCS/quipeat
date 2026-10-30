@@ -18,7 +18,7 @@ from .security import decrypt_secret
 from .i18n import translate
 from .ingest import extract_text_from_url, chunk_text
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 MIN_VERIFY_SCORE = 0.7
 
 log = logging.getLogger("quipeat.generation")
