@@ -40,6 +40,20 @@ class _JobEventStore(logging.Handler):
             pass
 
 
+JOB_EVENT_RETENTION_DAYS = 14
+
+
+def prune_job_events() -> None:
+    """Keep storage bounded: drop events past retention and events whose job
+    (or its deck) no longer exists. Called after each job and at startup."""
+    try:
+        db.execute("DELETE FROM job_events WHERE created_at < datetime('now', ?)",
+                   (f'-{JOB_EVENT_RETENTION_DAYS} days',))
+        db.execute("DELETE FROM job_events WHERE job_id NOT IN (SELECT id FROM jobs)")
+    except Exception:
+        pass
+
+
 def _attach_job_logger(job_id: str) -> logging.Handler:
     handler = _JobEventStore(job_id)
     handler.setLevel(logging.INFO)
@@ -223,6 +237,7 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
         _generate_deck_questions_inner(user_id, deck_id, job_id)
     finally:
         log.removeHandler(job_handler)
+        prune_job_events()
 
 
 def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str) -> None:

@@ -68,7 +68,20 @@ def check_llm_builtin() -> tuple[str, str]:
     return "degraded", "no built-in key: users must connect their own LLM key"
 
 
+_last_full_check = 0.0
+FULL_CHECK_INTERVAL = 300  # seconds; expensive probes (browser launch) are cached
+
+
 def run_all_checks() -> dict[str, dict]:
+    """Full checks are cached for FULL_CHECK_INTERVAL: the crawler probe
+    launches a real browser, which is too slow to run on every admin page
+    load. Fresh component state recorded at runtime via record() always
+    wins over the cache."""
+    global _last_full_check
+    now = time.time()
+    if _state and now - _last_full_check < FULL_CHECK_INTERVAL:
+        return snapshot()
+    _last_full_check = now
     checks = {"database": check_database, "crawler": check_crawler,
               "llm_builtin": check_llm_builtin}
     results = {}

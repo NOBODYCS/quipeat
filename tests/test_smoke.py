@@ -622,3 +622,57 @@ def test_file_upload_and_topic_decks_generate():
         deck = db.query_one("SELECT status FROM decks WHERE id = ?", (deck_id,))
         assert deck["status"] == "ready"
         assert not job["error"]
+
+
+def test_job_events_pruned_and_regenerate_text_deck():
+    """Storage stays bounded: retention pruning works, and regenerating a
+    text deck (no crawler) re-chunks from stored raw_text instead of ending
+    up with zero chunks and zero questions."""
+    import time
+
+    client.post("/register", data={"email": "prune@b.c", "password": "password123",
+                                   "display_name": "P"}, follow_redirects=False)
+
+    r = client.post("/new", data={"title": "Prune", "goal": "Learn pruning",
+                                  "topic_text": "Pruning keeps storage bounded over time. " * 60},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    deck_id = int(r.headers["location"].split("created=")[1])
+    job = None
+    for _ in range(60):
+        job = db.query_one("SELECT * FROM jobs WHERE deck_id = ?", (deck_id,))
+        if job and job["status"] in ("done", "failed"):
+            break
+        time.sleep(0.2)
+    assert job["status"] == "done"
+
+    from app.generation import prune_job_events, JOB_EVENT_RETENTION_DAYS
+    # simulate an ancient event + an orphan
+    db.execute("INSERT INTO job_events(job_id, level, message, created_at)"
+               " VALUES ('ghost-job', 'info', 'orphan', datetime('now', '-999 days'))")
+    prune_job_events()
+    ghost = db.query_one("SELECT 1 FROM job_events WHERE job_id = 'ghost-job'")
+    assert ghost is None
+    # real events for live jobs survive
+    live = db.query("SELECT * FROM job_events WHERE job_id = ?", (job["id"],))
+    assert live
+
+    # regen the text deck: chunks must be rebuilt, questions must regenerate
+    r = client.post(f"/decks/{deck_id}/regen", follow_redirects=False)
+    assert r.status_code == 303
+    for _ in range(60):
+        unfinished = db.query(
+            "SELECT * FROM jobs WHERE deck_id = ? AND status IN ('queued','running')", (deck_id,))
+        if not unfinished:
+            break
+        time.sleep(0.2)
+    job2 = db.query_one(
+        "SELECT * FROM jobs WHERE deck_id = ? ORDER BY rowid DESC LIMIT 1", (deck_id,))
+    assert job2["status"] == "done", job2["error"]
+    qs = db.query_one("SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))
+    assert qs["n"] > 0, "regen produced no questions for a text deck"
+
+    # deck delete removes its job events (no orphans)
+    client.post(f"/decks/{deck_id}/delete", follow_redirects=False)
+    leftover = db.query_one("SELECT 1 FROM job_events WHERE job_id = ?", (job["id"],))
+    assert leftover is None

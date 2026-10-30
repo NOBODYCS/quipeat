@@ -37,6 +37,8 @@ def _startup():
     db.init_db()
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
     from . import diagnostics
+    from .generation import prune_job_events
+    prune_job_events()
     results = diagnostics.run_all_checks()
     degraded = [f"{k}: {v['detail']}" for k, v in results.items() if v["status"] != "ok"]
     if degraded:
@@ -285,9 +287,11 @@ async def new_source(request: Request, title: str = Form(...), goal: str = Form(
             upload_dir.mkdir(parents=True, exist_ok=True)
             tmp = upload_dir / f"{secrets.token_hex(8)}_{file.filename}"
             tmp.write_bytes(data)
-            raw = extract_text_from_file(tmp, file.filename)
+            try:
+                raw = extract_text_from_file(tmp, file.filename)
+            finally:
+                tmp.unlink(missing_ok=True)
             kind, ref = "file", file.filename
-            tmp.unlink(missing_ok=True)
         elif url:
             raw = ""
             kind, ref = "url", url
@@ -516,11 +520,24 @@ async def flag_question(request: Request, qid: int):
 @app.post("/decks/{deck_id}/regen")
 async def regen_deck(request: Request, deck_id: int):
     user = require_user(request)
-    deck = db.query_one("SELECT * FROM decks WHERE id = ? AND user_id = ?", (deck_id, user["id"]))
+    deck = db.query_one(
+        "SELECT d.*, s.kind AS source_kind, s.raw_text FROM decks d"
+        " JOIN sources s ON s.id = d.source_id WHERE d.id = ? AND d.user_id = ?",
+        (deck_id, user["id"]))
     if not deck:
         return RedirectResponse("/decks", status_code=303)
+    active = db.query_one(
+        "SELECT 1 FROM jobs WHERE deck_id = ? AND status IN ('queued','running')", (deck_id,))
+    if active:
+        return RedirectResponse(f"/decks/{deck_id}", status_code=303)
     db.execute("DELETE FROM questions WHERE deck_id = ?", (deck_id,))
     db.execute("DELETE FROM chunks WHERE source_id = ?", (deck["source_id"],))
+    # URL decks re-crawl in the job. File/text decks have no crawler: re-chunk
+    # from the stored raw_text, otherwise regen yields zero chunks/questions.
+    if deck["source_kind"] != "url":
+        for idx, piece in enumerate(chunk_text(deck["raw_text"] or "")):
+            db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)",
+                       (deck["source_id"], idx, piece))
     db.execute("UPDATE decks SET status='draft' WHERE id = ?", (deck_id,))
     job_id = start_generation(user["id"], deck_id)
     log.info("deck %s regen (user=%s), job %s started", deck_id, user["id"], job_id)
@@ -541,6 +558,8 @@ async def rename_deck(request: Request, deck_id: int, title: str = Form(...)):
 @app.post("/decks/{deck_id}/delete")
 async def delete_deck(request: Request, deck_id: int):
     user = require_user(request)
+    db.execute("DELETE FROM job_events WHERE job_id IN (SELECT id FROM jobs WHERE deck_id = ?)",
+               (deck_id,))
     db.execute("DELETE FROM decks WHERE id = ? AND user_id = ?", (deck_id, user["id"]))
     return RedirectResponse("/decks", status_code=303)
 
