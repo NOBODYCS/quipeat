@@ -9,7 +9,7 @@ pattern exists (`hx-trigger="every 2s"` in `_job_status.html`); auth via
 session cookie + `require_user`/`owned_deck`; gamify.award_xp exists; tests
 60 green with LLM_MOCK=true.
 
-## Job A — 1v1 VS duels — DONE (commit TBD)
+## Job A — 1v1 VS duels — DONE (f161acc)
 
 - [x] Schema: duels + duel_answers tables (idempotent in db.init_db)
 - [x] Challenge flow: pick user + own deck -> pending challenge for opponent
@@ -21,7 +21,7 @@ session cookie + `require_user`/`owned_deck`; gamify.award_xp exists; tests
 - [x] Stats page: duel wins/losses
 - [x] Tests green: lifecycle, deterministic seed sequence, forfeit, no-FSRS, privacy; en/pl strings
 
-## Job B — topic pack library — DONE (commit TBD)
+## Job B — topic pack library — DONE (488bfdf)
 
 - [x] Pack format JSON (format: Literal[1], title, lang, questions[]) + pydantic validation
   (4 distinct options, non-empty explanation, no placeholder/meta prompts)
