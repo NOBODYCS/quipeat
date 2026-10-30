@@ -18,7 +18,8 @@ from .generation import start_generation
 from .ingest import chunk_text, extract_text_from_file, extract_text_from_url, IngestError
 from .llm.providers import DEFAULT_MODELS
 from .security import (create_session, csrf_token, decrypt_secret, delete_session, encrypt_secret,
-                       get_session_user, hash_password, mask_key, verify_password)
+                       get_session_user, hash_password, mask_key, rate_limit_key, rate_limited,
+                       verify_password)
 
 BASE_DIR = Path(__file__).parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
@@ -196,10 +197,12 @@ async def register_form(request: Request):
 async def register(request: Request, email: str = Form(...), password: str = Form(...),
                    display_name: str = Form("")):
     email = email.strip().lower()
+    if rate_limited(rate_limit_key(request, email)):
+        return page(request, "register.html", error=translate(lang_of(request), "rate_limited"))
     if len(password) < 8:
-        return page(request, "register.html", error="Password must be at least 8 characters.")
+        return page(request, "register.html", error=translate(lang_of(request), "pw_too_short"))
     if db.query_one("SELECT 1 FROM users WHERE email = ?", (email,)):
-        return page(request, "register.html", error="An account with this email already exists.")
+        return page(request, "register.html", error=translate(lang_of(request), "email_taken"))
     cur = db.execute("INSERT INTO users(email, password_hash, display_name) VALUES (?, ?, ?)",
                      (email, hash_password(password), display_name.strip()))
     uid = cur.lastrowid
@@ -231,9 +234,11 @@ async def login_form(request: Request, error: str | None = None):
 @app.post("/login")
 async def login(request: Request, email: str = Form(...), password: str = Form(...)):
     email = email.strip().lower()
+    if rate_limited(rate_limit_key(request, email)):
+        return page(request, "login.html", error=translate(lang_of(request), "rate_limited"))
     user = db.query_one("SELECT * FROM users WHERE email = ?", (email,))
     if not user or not verify_password(password, user["password_hash"]):
-        return page(request, "login.html", error="Invalid email or password.")
+        return page(request, "login.html", error=translate(lang_of(request), "invalid_creds"))
     token = create_session(user["id"])
     resp = RedirectResponse("/onboarding" if not user["onboarded_at"] else "/decks", status_code=303)
     resp.set_cookie("quipeat_session", token, httponly=True, samesite="lax", max_age=30 * 86400)

@@ -890,3 +890,30 @@ def test_csrf_enforced_on_state_changing_posts():
     r = c2.post("/login", data={"email": "csrf@example.com", "password": "password123"},
                 follow_redirects=False)
     assert r.status_code in (200, 303)
+
+
+def test_login_rate_limited():
+    """E5: after RATE_LIMIT failed attempts from one IP+email, login is throttled."""
+    from app.security import RATE_LIMIT, rate_limited, rate_limit_key
+    c = TestClient(app)
+    c.post("/register", data={"email": "rl@example.com", "password": "password123"}, follow_redirects=False)
+    c2 = TestClient(app)
+    for _ in range(RATE_LIMIT):
+        r = c2.post("/login", data={"email": "rl@example.com", "password": "wrong-password"}, follow_redirects=False)
+        assert r.status_code == 200
+    r = c2.post("/login", data={"email": "rl@example.com", "password": "wrong-password"}, follow_redirects=False)
+    assert r.status_code == 200 and "Too many attempts" in r.text
+
+
+def test_auth_errors_i18n_pl():
+    """E14: PL UI shows translated auth errors."""
+    c2 = TestClient(app)
+    r = c2.post("/register", data={"email": "pl@example.com", "password": "password123"}, follow_redirects=False)
+    assert r.status_code == 303
+    db.execute("UPDATE users SET lang = 'pl' WHERE email = 'pl@example.com'")
+    r = c2.post("/login", data={"email": "pl@example.com", "password": "nope-nope"}, follow_redirects=False)
+    assert r.status_code == 200 and "Nieprawidłowy" in r.text
+    c3 = TestClient(app)
+    r = c3.post("/register", data={"email": "pl2@example.com", "password": "short"},
+                cookies={"quipeat_lang": "pl"}, follow_redirects=False)
+    assert r.status_code == 200 and "co najmniej 8" in r.text

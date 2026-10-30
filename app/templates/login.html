@@ -32,7 +32,33 @@
       <button type="submit" class="btn-primary w-full">{{ t("signin") }}</button>
     </form>
     {% if passkeys_enabled %}
-    <button id="passkey-login" class="btn-ghost mt-3 w-full">{{ t("passkey") }}</button>
+    <button id="passkey-login" type="button" class="btn-ghost mt-3 w-full">{{ t("passkey") }}</button>
+    <script>
+    document.getElementById('passkey-login').addEventListener('click', async function () {
+      var btn = this; btn.disabled = true;
+      try {
+        var opts = await (await fetch('/passkeys/login-options')).json();
+        opts.challenge = Uint8Array.from(atob(opts.challenge.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+        for (var c of (opts.allowCredentials || [])) c.id = Uint8Array.from(atob(c.id.replace(/-/g, '+').replace(/_/g, '/')), ch => ch.charCodeAt(0));
+        var cred = await navigator.credentials.get({ publicKey: opts });
+        var body = {
+          id: cred.id,
+          rawId: btoa(String.fromCharCode(...new Uint8Array(cred.rawId))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+          challenge: btoa(String.fromCharCode(...new Uint8Array(opts.challenge))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+          type: cred.type,
+          response: {
+            authenticatorData: btoa(String.fromCharCode(...new Uint8Array(cred.response.authenticatorData))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+            clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(cred.response.clientDataJSON))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+            signature: btoa(String.fromCharCode(...new Uint8Array(cred.response.signature))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+            userHandle: cred.response.userHandle ? btoa(String.fromCharCode(...new Uint8Array(cred.response.userHandle))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') : null,
+          },
+        };
+        var r = await fetch('/passkeys/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (r.ok) { window.location.href = '/decks'; return; }
+        btn.disabled = false;
+      } catch (e) { btn.disabled = false; }
+    });
+    </script>
     {% endif %}
     <p class="mt-4 text-sm text-mist-400 text-center">{{ t("no_account") }} <a href="/register" class="text-volt-300 font-semibold hover:underline">{{ t("create_account") }}</a></p>
   </div>

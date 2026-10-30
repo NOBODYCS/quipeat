@@ -2,6 +2,9 @@ import base64
 import hashlib
 import hmac
 import secrets
+import threading
+import time
+from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
 from argon2 import PasswordHasher
@@ -85,3 +88,28 @@ def csrf_token(session_token: str) -> str:
     send cookies but cannot read them) cannot forge it."""
     return hmac.new(settings.secret_key.encode(), ("csrf|" + session_token).encode(),
                     hashlib.sha256).hexdigest()
+
+
+# --- simple in-memory rate limiter for auth endpoints ---
+_rate_lock = threading.Lock()
+_rate_hits: dict[str, deque] = defaultdict(deque)
+RATE_LIMIT = 10          # attempts
+RATE_WINDOW_S = 15 * 60  # per 15 minutes
+
+
+def rate_limited(key: str) -> bool:
+    """True if this key has exceeded RATE_LIMIT attempts in the window."""
+    now = time.monotonic()
+    with _rate_lock:
+        dq = _rate_hits[key]
+        while dq and now - dq[0] > RATE_WINDOW_S:
+            dq.popleft()
+        if len(dq) >= RATE_LIMIT:
+            return True
+        dq.append(now)
+        return False
+
+
+def rate_limit_key(request, email: str = "") -> str:
+    ip = request.client.host if request.client else "unknown"
+    return f"{ip}|{email.strip().lower()}"
