@@ -351,3 +351,16 @@ def test_triaged_sampling_end_to_end():
     assert chunks_used, "expected questions to be generated"
     relevant_hits = sum(1 for c in chunks_used if "playbook" in c["text"] or "ansible" in c["text"].lower())
     assert relevant_hits == len(chunks_used)
+
+
+def test_topic_triage_handles_unicode_titles():
+    """Diacritics in the deck title (e.g. Polish) must survive tokenization."""
+    from app.generation import _topic_score, _topic_terms
+
+    terms = _topic_terms("Quiz o konfiguracji Ansible")
+    assert "konfiguracji" in terms and "ansible" in terms
+    assert "quiz" not in terms
+
+    pl_text = "Konfiguracja playbooków w Ansible opiera się na plikach YAML " * 10
+    en_filler = "Please contribute by opening a pull request on GitHub " * 10
+    assert _topic_score(pl_text, terms) > _topic_score(en_filler, terms)

@@ -101,15 +101,20 @@ _STOPWORDS = {
 }
 
 
+def _words(text: str) -> list[str]:
+    """Unicode-aware word tokens, so Polish/other diacritics survive."""
+    return re.findall(r"[^\W_]+", text.lower(), re.UNICODE)
+
+
 def _topic_terms(title: str) -> set[str]:
-    return {t for t in re.findall(r"[a-z0-9]+", title.lower()) if len(t) > 2 and t not in _STOPWORDS}
+    return {t for t in _words(title) if len(t) > 2 and t not in _STOPWORDS}
 
 
 def _topic_score(chunk_text: str, terms: set[str]) -> float:
     """Cheap keyword-overlap triage: how much of this chunk is about the topic."""
     if not terms:
         return 0.0
-    words = re.findall(r"[a-z0-9]+", chunk_text.lower())
+    words = _words(chunk_text)
     if not words:
         return 0.0
     hits = sum(1 for w in words if w in terms)
