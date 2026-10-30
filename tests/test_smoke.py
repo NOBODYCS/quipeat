@@ -442,3 +442,37 @@ def test_provider_retries_transient_errors(monkeypatch):
     result = p.chat("m", "sys", "user", json_schema={"type": "object"})
     assert calls["n"] == 3
     assert result.text == "{}"
+
+
+def test_semantic_triage_drops_non_learning_chunks(monkeypatch):
+    """Contributor/changelog content must be dropped for ANY source type —
+    the gate judges content, not URL patterns."""
+    import time
+    from app import generation
+
+    def fake_triage(provider, model, title, chunks, job_id):
+        kept = [c for c in chunks if "playbook" in c["text"] or "inventory" in c["text"]]
+        return kept
+
+    monkeypatch.setattr(generation, "_semantic_triage", fake_triage)
+
+    mixed = ("Ansible playbooks define tasks in YAML against an inventory. "
+             "To contribute a new module, open a pull request following the contributor "
+             "path and changelog fragment process. ") * 40
+    r = client.post("/new", data={"title": "Ansible", "topic_text": mixed,
+                                  "level": "quick"}, follow_redirects=False)
+    assert r.status_code == 303
+    deck_id = int(r.headers["location"].split("created=")[1])
+    job = None
+    for _ in range(60):
+        job = db.query_one("SELECT * FROM jobs WHERE deck_id = ?", (deck_id,))
+        if job and job["status"] in ("done", "failed"):
+            break
+        time.sleep(0.2)
+    assert job["status"] == "done"
+
+    qs = db.query("SELECT q.prompt FROM questions q WHERE q.deck_id = ?", (deck_id,))
+    assert qs, "expected questions from learning chunks"
+    for q in qs:
+        assert "contribut" not in q["prompt"].lower()
+        assert "changelog" not in q["prompt"].lower()

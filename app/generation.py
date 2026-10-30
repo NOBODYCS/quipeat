@@ -39,6 +39,16 @@ class GenerateResponse(BaseModel):
     questions: list[QuestionDraft]
 
 
+class ChunkVerdict(BaseModel):
+    index: int = Field(ge=0)
+    is_learning_material: bool = True
+    reason: str = ""
+
+
+class TriageResponse(BaseModel):
+    verdicts: list[ChunkVerdict]
+
+
 class VerifyItem(BaseModel):
     index: int = Field(ge=0)
     verdict: str
@@ -127,6 +137,44 @@ def _topic_score(chunk_text: str, terms: set[str]) -> float:
         return 0.0
     hits = sum(1 for w in words if w in terms)
     return hits / len(words)
+
+
+def _semantic_triage(provider, model, deck_title: str, chunks, job_id: str) -> list:
+    """One cheap LLM call per batch of chunks: classify each excerpt as
+    learning material for the topic or not. Works for any source (URL, PDF,
+    pasted text) because it judges CONTENT, not URL patterns. Chunks judged
+    not-learning-material are dropped before any generation budget is spent
+    on them."""
+    kept = []
+    batch = 8
+    for start in range(0, len(chunks), batch):
+        group = chunks[start:start + batch]
+        excerpts = "\n".join(
+            f"--- Excerpt {i} ---\n{c['text'][:1200]}" for i, c in enumerate(group))
+        user_msg = (
+            f"TOPIC: a learner wants to master: {deck_title}.\n\n"
+            f"Classify each excerpt: is it learning material about the TOPIC that a "
+            f"practitioner/student would study (concepts, usage, commands, configuration, "
+            f"behavior, examples)? Or is it about something else (project contribution/ "
+            f"governance, changelogs, licensing, site navigation, unrelated content)?\n\n"
+            f"{excerpts}"
+        )
+        try:
+            resp, _ = structured_call(provider, model, _system_prompt("triage"),
+                                      user_msg, TriageResponse, temperature=0.0,
+                                      max_tokens=512)
+            keep = {v.index for v in resp.verdicts if v.is_learning_material}
+        except Exception as e:
+            log.warning("[job %s] triage call failed (%s: %s), keeping all chunks",
+                        job_id, type(e).__name__, str(e)[:150])
+            keep = set(range(len(group)))
+        for i, c in enumerate(group):
+            if i in keep:
+                kept.append(c)
+            else:
+                log.info("[job %s] triage dropped chunk %s (not learning material)",
+                         job_id, c["idx"])
+    return kept
 
 
 def _lang_instruction(lang: str) -> str:
@@ -222,6 +270,11 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
         log.info("[job %s] provider=%s model=%s", job_id, provider.name, model)
         db.execute("UPDATE jobs SET status='running', total=?, started_at=datetime('now') WHERE id=?",
                    (len(chunks), job_id))
+        chunks = _semantic_triage(provider, model, deck["title"], chunks, job_id)
+        log.info("[job %s] triage kept %s/%s chunks", job_id, len(chunks),
+                 db.query_one("SELECT COUNT(*) AS n FROM chunks WHERE source_id = ?",
+                              (deck["source_id"],))["n"])
+        db.execute("UPDATE jobs SET total=? WHERE id=?", (len(chunks), job_id))
         seen_prompts: list[str] = []
         for chunk in chunks:
             log.info("[job %s] chunk %s: drafting (%s words)", job_id, chunk["idx"],

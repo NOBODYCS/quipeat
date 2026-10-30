@@ -7,6 +7,11 @@ every question whether it is sound.
 - supported: the correct answer is explicitly stated in or directly entailed by the source.
 - unambiguous: no other option could also be argued correct from the source.
 - distractors: all wrong options are clearly wrong according to the source.
+- learner-relevant: the question is about USING or UNDERSTANDING the topic, not about
+  the project's own development (contributing, releasing, changelogs, governance,
+  licensing, site navigation). Fail questions about the latter even if supported.
+- well-formed: the question is short (roughly <= 25 words), asks about ONE concept,
+  and does not reference "the text/source". Fail bloated, convoluted, or meta questions.
 - If any check fails, that question's verdict is "fail" and you explain briefly in its notes.
 
 # Output
