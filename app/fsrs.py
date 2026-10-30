@@ -2,6 +2,8 @@
 interval, ease factor, reps, lapses. Ratings: again/hard/good/easy."""
 from datetime import datetime, timedelta, timezone
 
+from .db import now_utc
+
 W = (1.0, 2.5, 5.0, 10.0)  # intervals in days for again/hard/good/easy on first pass
 
 
@@ -42,7 +44,8 @@ def grade(card: dict, rating: str) -> dict:
 
     due = _now() + timedelta(days=interval)
     return {
-        "due_at": due.isoformat(),
+        # SQLite datetime('now') format: keeps SQL string comparisons correct.
+        "due_at": due.strftime("%Y-%m-%d %H:%M:%S"),
         "interval_days": round(interval, 6),
         "ef": round(ef, 4),
         "reps": reps,

@@ -146,14 +146,14 @@ def _store_challenge(challenge: str, user_id: int | None, kind: str) -> None:
     expires = datetime.now(timezone.utc) + timedelta(minutes=CHALLENGE_TTL_MIN)
     db.execute(
         "INSERT INTO passkey_challenges(challenge, user_id, kind, expires_at) VALUES (?, ?, ?, ?)",
-        (challenge, user_id, kind, expires.isoformat()),
+        (challenge, user_id, kind, expires.strftime("%Y-%m-%d %H:%M:%S")),
     )
 
 
 def _take_challenge(challenge: str, user_id: int | None, kind: str) -> str:
     row = db.query_one(
         "SELECT * FROM passkey_challenges WHERE challenge = ? AND kind = ? AND expires_at > ?",
-        (challenge, kind, datetime.now(timezone.utc).isoformat()),
+        (challenge, kind, db.now_utc()),
     )
     if not row:
         raise ValueError("Challenge expired or unknown")

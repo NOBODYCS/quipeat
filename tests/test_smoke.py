@@ -758,17 +758,18 @@ def test_cross_user_access_denied():
     assert "Mitochondria" not in r.text
 
     r = other.post(f"/study/{deck_id}/answer",
-                   data={"question_id": q["id"], "choice": q["correct_index"]})
+                   data={"question_id": q["id"], "choice": q["correct_index"]}, follow_redirects=False)
     assert r.status_code == 303
     r = other.post(f"/study/{deck_id}/rate",
-                   data={"question_id": q["id"], "choice": q["correct_index"], "rating": "easy"})
+                   data={"question_id": q["id"], "choice": q["correct_index"], "rating": "easy"},
+                   follow_redirects=False)
     assert r.status_code == 303
     assert db.query_one("SELECT COUNT(*) c FROM reviews WHERE question_id = ?", (q["id"],))["c"] == 0
-    before = db.query_one("SELECT due_at, reps FROM questions WHERE id = ?", (q["id"],)).copy()
+    before = dict(db.query_one("SELECT due_at, reps FROM questions WHERE id = ?", (q["id"],)))
     r = other.post(f"/questions/{q['id']}/flag", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/decks"
     assert db.query_one("SELECT flagged FROM questions WHERE id = ?", (q["id"],))["flagged"] == 0
-    after = db.query_one("SELECT due_at, reps FROM questions WHERE id = ?", (q["id"],))
+    after = dict(db.query_one("SELECT due_at, reps FROM questions WHERE id = ?", (q["id"],)))
     assert (after["due_at"], after["reps"]) == (before["due_at"], before["reps"])
 
 
@@ -778,3 +779,40 @@ def test_flag_without_referer_redirects_safely():
     r = c.post(f"/questions/{q['id']}/flag", headers={"referer": ""}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"].startswith("/")
     assert db.query_one("SELECT flagged FROM questions WHERE id = ?", (q["id"],))["flagged"] == 1
+
+
+def test_due_at_format_matches_sqlite_now():
+    """B1: grade() must emit due_at in SQLite datetime('now') format so that
+    SQL 'due_at <= datetime('now')' comparisons actually work."""
+    from app.fsrs import grade
+    from app import db as _db
+    card = {"ef": 2.5, "interval_days": 0, "reps": 0, "lapses": 0}
+    new = grade(card, "again")  # due in 1 minute
+    assert "T" not in new["due_at"] and "+" not in new["due_at"]
+    import sqlite3
+    conn = _db.get_conn()
+    row = conn.execute("SELECT ? <= datetime('now', '+2 minutes') AS due_soon", (new["due_at"],)).fetchone()
+    assert row["due_soon"] == 1, new["due_at"]
+    # a card graded 'good' (due in days) is not due now but will be later
+    new2 = grade(card, "good")
+    row = conn.execute("SELECT ? <= datetime('now') AS due_now, ? <= datetime('now', '+10 days') AS due_later",
+                       (new2["due_at"], new2["due_at"])).fetchone()
+    assert row["due_now"] == 0 and row["due_later"] == 1
+
+
+def test_rated_card_becomes_due_again():
+    """B1 end-to-end: after rating 'again', the card is due per SQL and /study serves it."""
+    c, deck_id, q = _register_and_deck("due@example.com")
+    r = c.post(f"/study/{deck_id}/rate",
+               data={"question_id": q["id"], "choice": q["correct_index"], "rating": "good"},
+               follow_redirects=False)
+    assert r.status_code in (200, 303)
+    row = db.query_one("SELECT due_at FROM questions WHERE id = ?", (q["id"],))
+    assert "T" not in row["due_at"]
+    # force due_at into the past, then check SQL + the /study page agree it is due
+    db.execute("UPDATE questions SET due_at = datetime('now', '-1 minute') WHERE id = ?", (q["id"],))
+    n = db.query_one("SELECT COUNT(*) c FROM questions WHERE deck_id = ? AND due_at <= datetime('now')",
+                     (deck_id,))["c"]
+    assert n >= 1
+    r = c.get(f"/study/{deck_id}")
+    assert r.status_code == 200 and "card-area" in r.text

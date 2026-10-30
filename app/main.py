@@ -396,7 +396,7 @@ async def study_session(request: Request, deck_id: int):
     deck = db.query_one("SELECT * FROM decks WHERE id = ? AND user_id = ?", (deck_id, user["id"]))
     if not deck:
         return RedirectResponse("/study", status_code=303)
-    now = datetime.now(timezone.utc).isoformat()
+    now = db.now_utc()
     due = db.query_one(
         "SELECT COUNT(*) c, MIN(due_at) next_due FROM questions WHERE deck_id = ? AND due_at > ?",
         (deck_id, now))
@@ -474,10 +474,10 @@ def _finish_card(request, user, deck_id, q, choice, is_correct, rating=None):
                (xp, sess_id))
     nxt = db.query_one(
         "SELECT * FROM questions WHERE deck_id = ? AND due_at <= ? AND id != ? ORDER BY due_at LIMIT 1",
-        (deck_id, datetime.now(timezone.utc).isoformat(), q["id"]))
+        (deck_id, db.now_utc(), q["id"]))
     if nxt:
         deck = db.query_one("SELECT * FROM decks WHERE id = ?", (deck_id,))
-        now = datetime.now(timezone.utc).isoformat()
+        now = db.now_utc()
         due_count = db.query_one(
             "SELECT COUNT(*) c FROM questions WHERE deck_id = ? AND due_at <= ?", (deck_id, now))["c"]
         return page(request, "_card_body.html", deck=deck,
@@ -490,7 +490,7 @@ def _finish_card(request, user, deck_id, q, choice, is_correct, rating=None):
     acc = db.query_one("SELECT ROUND(100.0*SUM(correct)/COUNT(*),1) a FROM reviews WHERE user_id=? AND id IN (SELECT id FROM reviews WHERE reviewed_at >= ?)", (user["id"], sess_row["started_at"]))
     deck = db.query_one("SELECT * FROM decks WHERE id = ?", (deck_id,))
     next_due = db.query_one("SELECT MIN(due_at) d FROM questions WHERE deck_id = ? AND due_at > ?",
-                            (deck_id, datetime.now(timezone.utc).isoformat()))["d"]
+                            (deck_id, db.now_utc()))["d"]
     if request.headers.get("hx-request"):
         resp = Response(status_code=200)
         resp.headers["HX-Redirect"] = f"/study/{deck_id}/done"
@@ -517,7 +517,7 @@ async def study_done(request: Request, deck_id: int):
         "SELECT ROUND(100.0*SUM(correct)/COUNT(*),1) a FROM reviews WHERE user_id=? AND id IN (SELECT id FROM reviews WHERE reviewed_at >= ?)",
         (user["id"], sess["started_at"]))
     next_due = db.query_one("SELECT MIN(due_at) d FROM questions WHERE deck_id = ? AND due_at > ?",
-                            (deck_id, datetime.now(timezone.utc).isoformat()))["d"]
+                            (deck_id, db.now_utc()))["d"]
     return page(request, "study_summary.html", deck=deck, correct=1, xp=sess["xp_earned"],
                 cards=sess["cards_reviewed"], xp_total=sess["xp_earned"],
                 accuracy=acc["a"] or 0, award={}, activity={}, badges=[],

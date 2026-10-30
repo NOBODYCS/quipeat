@@ -47,7 +47,7 @@ def create_session(user_id: int, days: int = 30) -> str:
     expires = datetime.now(timezone.utc) + timedelta(days=days)
     db.execute(
         "INSERT INTO sessions(token, user_id, expires_at) VALUES (?, ?, ?)",
-        (token, user_id, expires.isoformat()),
+        (token, user_id, expires.strftime("%Y-%m-%d %H:%M:%S")),
     )
     return token
 
@@ -58,9 +58,14 @@ def get_session_user(token: str | None):
     row = db.query_one(
         "SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id "
         "WHERE s.token = ? AND s.expires_at > ?",
-        (token, datetime.now(timezone.utc).isoformat()),
+        (token, db.now_utc()),
     )
     return row
+
+
+def prune_expired_sessions() -> int:
+    cur = db.execute("DELETE FROM sessions WHERE expires_at <= ?", (db.now_utc(),))
+    return cur.rowcount
 
 
 def delete_session(token: str) -> None:

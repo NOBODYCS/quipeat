@@ -1,11 +1,18 @@
 import sqlite3
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import settings
 
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
+
+
+def now_utc() -> str:
+    """Current UTC time in the same format SQLite's datetime('now') produces,
+    so Python-written timestamps compare correctly in SQL string comparisons."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def get_conn() -> sqlite3.Connection:
@@ -46,6 +53,14 @@ def init_db() -> None:
             conn.execute("ALTER TABLE decks ADD COLUMN level TEXT NOT NULL DEFAULT 'standard'")
         if "goal" not in dcols:
             conn.execute("ALTER TABLE decks ADD COLUMN goal TEXT NOT NULL DEFAULT ''")
+        # Normalize Python-ISO timestamps ('...T...+00:00') written by older
+        # versions of fsrs/security into SQLite's datetime('now') format so
+        # string comparisons in SQL work uniformly.
+        for table, col in (("questions", "due_at"), ("sessions", "expires_at"),
+                           ("passkey_challenges", "expires_at")):
+            conn.execute(
+                f"UPDATE {table} SET {col} = substr(replace({col}, 'T', ' '), 1, 19)"
+                f" WHERE {col} LIKE '%T%'")
         conn.commit()
         _ensure_admin(conn)
         conn.commit()
