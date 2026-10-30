@@ -1673,3 +1673,100 @@ def test_duel_forfeit_by_inactivity():
     # reuse: just check result page shows bob won
     r = b.get(f"/duels/{duel_id}/result")
     assert r.status_code == 200 and "You won" in r.text
+
+
+# ---------- Job B: topic pack library ----------
+
+def test_pack_export_import_roundtrip():
+    """Export produces valid pack JSON; import round-trips questions with
+    answers + explanations intact and origin='pack'."""
+    from app.packs import validate_pack, import_pack_into_deck
+    import json as _json
+    c, deck_id, q = _register_and_deck("pack@example.com")
+    # export via HTTP
+    r = c.get(f"/decks/{deck_id}/export.pack.json")
+    assert r.status_code == 200
+    data = _json.loads(r.text)
+    pack = validate_pack(data)
+    assert pack.format == 1 and pack.title and len(pack.questions) >= 1
+    orig = db.query("SELECT prompt, options_json, correct_index, explanation FROM questions WHERE deck_id=? ORDER BY id", (deck_id,))
+    for i, pq in enumerate(pack.questions):
+        assert pq.prompt == orig[i]["prompt"]
+        assert _json.loads(orig[i]["options_json"]) == pq.options
+        assert pq.correct_index == orig[i]["correct_index"]
+        assert pq.explanation == orig[i]["explanation"]
+    # import as a new user -> new deck, origin=pack, fresh FSRS state
+    c2 = TestClient(app)
+    c2.post("/register", data={"email": "pack2@example.com", "password": "password123"}, follow_redirects=False)
+    r = csrf_post(c2, "/library/import", files={"file": ("p.pack.json", _json.dumps(data).encode(), "application/json")},
+                  follow_redirects=False)
+    assert r.status_code == 303
+    new_deck = int(r.headers["location"].split("created=")[1])
+    rows = db.query("SELECT origin, due_at, interval_days, reps, ef FROM questions WHERE deck_id=?", (new_deck,))
+    assert rows and all(r2["origin"] == "pack" for r2 in rows)
+    assert all(r2["reps"] == 0 and r2["interval_days"] == 0 and r2["ef"] == 2.5 for r2 in rows)
+    # immediately playable in study
+    page = c2.get(f"/study/{new_deck}")
+    assert page.status_code == 200 and "card-area" in page.text
+
+
+def test_pack_validation_rejects_bad():
+    from app.packs import validate_pack
+    import pytest as _pytest
+    good = {"format": 1, "title": "A proper title", "lang": "en",
+            "questions": [{"prompt": "A valid long enough prompt?", "options": ["a", "b", "c", "d"],
+                           "correct_index": 0, "explanation": "Because reasons."}]}
+    validate_pack(good)
+    with _pytest.raises(ValueError):
+        validate_pack({**good, "format": 99})
+    with _pytest.raises(ValueError):
+        validate_pack({**good, "questions": [{**good["questions"][0], "options": ["a", "a", "b", "c"]}]})
+    with _pytest.raises(ValueError):
+        validate_pack({**good, "questions": [{**good["questions"][0], "explanation": ""}]})
+    with _pytest.raises(ValueError):
+        validate_pack({**good, "questions": [{**good["questions"][0], "prompt": "According to the text, what?"}]})
+
+
+def test_library_clone_pack():
+    """Library lists shipped packs; cloning creates a user-owned ready deck."""
+    import json as _json
+    from app.packs import PACKS_DIR
+    PACKS_DIR.mkdir(exist_ok=True)
+    sample = {"format": 1, "title": "Sample pack", "lang": "en",
+              "questions": [{"prompt": f"Sample pack question number {i} here?", "options": ["a", "b", "c", "d"],
+                             "correct_index": 2, "explanation": "Sample explanation text."}
+                            for i in range(3)]}
+    (PACKS_DIR / "sample.pack.json").write_text(_json.dumps(sample), encoding="utf-8")
+    try:
+        c, deck_id, q = _register_and_deck("lib@example.com")
+        page = c.get("/library")
+        assert page.status_code == 200 and "Sample pack" in page.text and "3" in page.text
+        r = csrf_post(c, "/library/clone", data={"pack_file": "sample.pack.json"}, follow_redirects=False)
+        assert r.status_code == 303
+        new_deck = int(r.headers["location"].split("created=")[1])
+        rows = db.query("SELECT origin, prompt FROM questions WHERE deck_id=? ORDER BY id", (new_deck,))
+        assert len(rows) == 3 and all(x["origin"] == "pack" for x in rows)
+        deck = db.query_one("SELECT status FROM decks WHERE id=?", (new_deck,))
+        assert deck["status"] == "ready"
+        # playable immediately
+        assert "card-area" in c.get(f"/study/{new_deck}").text
+        # path traversal rejected
+        r = csrf_post(c, "/library/clone", data={"pack_file": "../app/main.py"}, follow_redirects=False)
+        assert r.status_code == 303 and "error=invalid" in r.headers["location"]
+    finally:
+        (PACKS_DIR / "sample.pack.json").unlink(missing_ok=True)
+
+
+def test_build_pack_script_mock():
+    """scripts/build_pack.py runs end to end with LLM_MOCK=true."""
+    import subprocess, tempfile, json as _json
+    out = Path(tempfile.mkdtemp()) / "t.pack.json"
+    r = subprocess.run([sys.executable, "scripts/build_pack.py", "--topic", "Test topic",
+                        "--count", "6", "--lang", "en", "--out", str(out)],
+                       capture_output=True, text=True,
+                       env={**__import__("os").environ, "LLM_MOCK": "true", "SECRET_KEY": "test-secret"})
+    assert r.returncode == 0, r.stderr[-500:]
+    data = _json.loads(out.read_text())
+    from app.packs import validate_pack
+    pack = validate_pack(data)
+    assert len(pack.questions) >= 1

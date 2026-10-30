@@ -1,0 +1,32 @@
+{
+ "format": 1,
+ "title": "Photosynthesis basics",
+ "lang": "en",
+ "questions": [
+  {
+   "prompt": "[mock] What main idea is discussed here: LEARNING GOAL: The user wants to learn: Master: Photosynthesis basics. This text…?",
+   "options": [
+    "The main idea",
+    "An unrelated topic",
+    "A footnote",
+    "Nothing"
+   ],
+   "correct_index": 0,
+   "explanation": "The chunk states its main idea directly.",
+   "difficulty": "easy"
+  },
+  {
+   "prompt": "[mock] Which detail from the text supports the main idea: LEARNING GOAL: The user wants to learn: Master: Photosynthesis basics. This text…?",
+   "options": [
+    "A supporting detail",
+    "A contradiction",
+    "A guess",
+    "An opinion"
+   ],
+   "correct_index": 0,
+   "explanation": "The text provides supporting details for the main idea.",
+   "difficulty": "medium"
+  }
+ ],
+ "note": "FORMAT SAMPLE built with LLM_MOCK=true — replace with a real-key build (scripts/build_pack.py --topic ... --count 100) before shipping."
+}

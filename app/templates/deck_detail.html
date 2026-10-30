@@ -34,6 +34,7 @@
   {% endif %}
   <a href="/decks/{{ deck.id }}/questions" class="btn-ghost">{{ t("review_questions") }}</a>
   <a href="/decks/{{ deck.id }}/inspect" class="btn-ghost">{{ t("inspect_deck") }}</a>
+  <a href="/decks/{{ deck.id }}/export.pack.json" class="btn-ghost">⬇ {{ t("export_pack") }}</a>
 </div>
 {% if flagged %}
 <div class="card p-5 mb-6 border-red-900/60">

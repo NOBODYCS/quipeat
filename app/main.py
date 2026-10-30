@@ -502,6 +502,56 @@ async def deck_inspect(request: Request, deck_id: int):
     return page(request, "inspect.html", questions=items, deck=deck)
 
 
+# ---------- topic pack library ----------
+
+@app.get("/library", response_class=HTMLResponse)
+async def library_page(request: Request):
+    require_user(request)
+    from .packs import list_shipped_packs
+    return page(request, "library.html", packs=list_shipped_packs())
+
+
+@app.post("/library/clone")
+async def library_clone(request: Request, pack_file: str = Form(...)):
+    user = require_user(request)
+    from .packs import load_pack_file, import_pack_into_deck
+    try:
+        pack = load_pack_file(pack_file)
+    except ValueError:
+        return RedirectResponse("/library?error=invalid", status_code=303)
+    deck_id = import_pack_into_deck(user["id"], pack)
+    return RedirectResponse(f"/decks?created={deck_id}", status_code=303)
+
+
+@app.post("/library/import")
+async def library_import(request: Request, file: UploadFile = File(...)):
+    user = require_user(request)
+    import json as _json
+    from .packs import validate_pack, import_pack_into_deck
+    try:
+        data = _json.loads((await file.read()).decode("utf-8"))
+        pack = validate_pack(data)
+    except Exception:
+        return RedirectResponse("/library?error=invalid", status_code=303)
+    deck_id = import_pack_into_deck(user["id"], pack)
+    return RedirectResponse(f"/decks?created={deck_id}", status_code=303)
+
+
+@app.get("/decks/{deck_id}/export.pack.json")
+async def deck_export(request: Request, deck_id: int):
+    user = require_user(request)
+    deck = owned_deck(user, deck_id)
+    if not deck:
+        return RedirectResponse("/decks", status_code=303)
+    from .packs import export_deck_pack
+    qs = db.query("SELECT * FROM questions WHERE deck_id = ? ORDER BY id", (deck_id,))
+    pack = export_deck_pack(deck, qs)
+    return Response(
+        json.dumps(pack, ensure_ascii=False, indent=1),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{deck["title"][:40].replace(" ", "_")}.pack.json"'})
+
+
 # ---------- VS duels ----------
 
 @app.get("/duels", response_class=HTMLResponse)

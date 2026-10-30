@@ -67,6 +67,8 @@ def init_db() -> None:
             conn.execute("ALTER TABLE questions ADD COLUMN edited INTEGER NOT NULL DEFAULT 0")
         if "verify_notes" not in qcols:
             conn.execute("ALTER TABLE questions ADD COLUMN verify_notes TEXT")
+        if "origin" not in qcols:
+            conn.execute("ALTER TABLE questions ADD COLUMN origin TEXT")
         # Mastery tracking (gamification layer): per-user-per-question box
         # level lives in the mastery table below, keyed (user_id, question_id).
         conn.execute(

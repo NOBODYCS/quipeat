@@ -21,15 +21,24 @@ session cookie + `require_user`/`owned_deck`; gamify.award_xp exists; tests
 - [x] Stats page: duel wins/losses
 - [x] Tests green: lifecycle, deterministic seed sequence, forfeit, no-FSRS, privacy; en/pl strings
 
-## Job B — topic pack library
+## Job B — topic pack library — DONE (commit TBD)
 
-- [ ] Pack format JSON (format field, title, lang, questions[]) + validation
-- [ ] Export deck -> pack file; import pack -> new owned deck, origin='pack' column
-- [ ] Library page listing packs/ shipped packs; "Add to my decks" clones with fresh FSRS state
-- [ ] scripts/build_pack.py --topic --count --lang via the app's generation pipeline
-- [ ] Starter packs (real key if available, else LLM_MOCK format samples marked as such)
-- [ ] Tests: export/import round trip, clone state reset, pack validation; en/pl strings
+- [x] Pack format JSON (format: Literal[1], title, lang, questions[]) + pydantic validation
+  (4 distinct options, non-empty explanation, no placeholder/meta prompts)
+- [x] Export deck -> /decks/{id}/export.pack.json; import pack file -> new owned deck,
+  origin='pack' column (idempotent ALTER)
+- [x] /library page lists packs/*.pack.json; "Add to my decks" clones with fresh FSRS
+  state, status=ready, immediately playable; path traversal rejected
+- [x] scripts/build_pack.py --topic --count --lang --out via the app's own pipeline
+  (research -> chunk_v2 -> generate_v2 -> batch verify -> dedup); tested with LLM_MOCK
+- [x] Starter packs: NO API key in this environment, so packs/ contains two
+  LLM_MOCK format samples (photosynthesis_basics.pack.json, uklad_sloneczny.pack.json),
+  each marked with a "note" field. REAL 100-question packs still to generate with a key:
+  1. "Photosynthesis basics" (en), 2. "Układ Słoneczny" (pl)
+- [x] Tests green: export/import round trip, clone state reset, validation rejects, build script
 
-## Remaining real packs to generate (if starter packs were mock-built)
+## Remaining real packs to generate (starter packs were mock-built format samples)
 
-- (fill in)
+- [ ] packs/photosynthesis_basics.pack.json — real 100-question build, en
+- [ ] packs/uklad_sloneczny.pack.json — real 100-question build, pl
+Run: python scripts/build_pack.py --topic "..." --count 100 --lang en|pl --out packs/...

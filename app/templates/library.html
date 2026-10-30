@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ t("library_title") }} · Quipeat{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-extrabold mb-1">📦 {{ t("library_title") }}</h1>
+<p class="text-sm text-mist-400 mb-6">{{ t("library_subtitle") }}</p>
+{% if request.query_params.get("error") %}<div class="alert-error mb-4">{{ t("pack_invalid") }}</div>{% endif %}
+
+<div class="card p-5 mb-6">
+  <h2 class="text-sm font-extrabold mb-3">{{ t("import_pack_file") }}</h2>
+  <form method="post" action="/library/import" enctype="multipart/form-data" class="flex flex-wrap gap-2">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="file" name="file" accept=".json,.pack.json" required
+           class="text-sm text-mist-400 file:mr-3 file:btn-ghost file:btn-sm file:text-xs">
+    <button class="btn-primary btn-sm">{{ t("import") }}</button>
+  </form>
+</div>
+
+{% if not packs %}
+<div class="card border-dashed p-8 text-center text-mist-400">{{ t("library_empty") }}</div>
+{% else %}
+<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+  {% for p in packs %}
+  <div class="card p-4 {% if not p.valid %}opacity-60{% endif %}">
+    <div class="font-semibold mb-1 truncate">{{ p.title }}</div>
+    <div class="flex flex-wrap gap-1.5 text-xs mb-3">
+      <span class="chip">{{ p.file }}</span>
+      <span class="chip">{{ p.lang }}</span>
+      <span class="chip">{{ p.count }} {{ t("questions_n") }}</span>
+    </div>
+    {% if p.valid %}
+    <form method="post" action="/library/clone">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="pack_file" value="{{ p.file }}">
+      <button class="btn-primary btn-sm w-full">＋ {{ t("add_to_my_decks") }}</button>
+    </form>
+    {% else %}
+    <span class="text-xs text-red-400">{{ t("pack_invalid") }}: {{ p.error }}</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
