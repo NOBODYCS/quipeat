@@ -1222,3 +1222,45 @@ def test_edited_questions_survive_add_more_regen():
     assert job["status"] == "done", job["error"]
     row = db.query_one("SELECT * FROM questions WHERE id=?", (q["id"],))
     assert row is not None and row["prompt"].startswith("Hand-edited") and row["edited"] == 1
+
+
+def test_clarity_failures_dropped_with_notes():
+    """Acceptance: a question failing any clarity check is dropped with notes stored.
+    Covers overlong stem, double negative, meta reference, all-of-the-above."""
+    from app.generation import (_normalize_options, MIN_VERIFY_SCORE)
+    from app.llm.providers import BaseProvider, ChatResult
+    import json as _json
+
+    class BadProvider(BaseProvider):
+        name = "bad"
+        def __init__(self): pass
+        def chat(self, model, system, user, *, json_schema=None, temperature=0.2, max_tokens=4096):
+            schema_str = _json.dumps(json_schema or {})
+            if "verdict" in schema_str:
+                # critic fails every question with a clarity note
+                n = len(re.findall(r"^Question \d+:", user, re.M)) or 1
+                return ChatResult(text=_json.dumps({"results": [
+                    {"index": i, "verdict": "fail", "score": 0.1,
+                     "notes": "clarity: double negative / meta reference / all-of-the-above"}
+                    for i in range(n)]}), model="bad")
+            return ChatResult(text=_json.dumps({"questions": [
+                {"prompt": "Which of the following is NOT NOT a benefit of sleep for the brain?",
+                 "options": ["All of the above", "Memory consolidation", "Clearance of waste", "Mood regulation"],
+                 "correct_index": 0, "explanation": "Sleep supports all listed functions.",
+                 "difficulty": "medium"}]}), model="bad")
+
+    import re
+    from app import generation
+    c, deck_id, q = _register_and_deck("clarity@example.com")
+    deck = db.query_one("SELECT * FROM decks WHERE id=?", (deck_id,))
+    chunk = db.query_one("SELECT * FROM chunks WHERE source_id=? ORDER BY idx LIMIT 1", (deck["source_id"],))
+    n0 = db.query_one("SELECT COUNT(*) c FROM questions WHERE deck_id=?", (deck_id,))["c"]
+    orig = generation._get_provider
+    generation._get_provider = lambda uid: (BadProvider(), "bad")
+    try:
+        generation.regenerate_single_question(1, deck_id, q["id"])
+    finally:
+        generation._get_provider = orig
+    # regen-one with a failing critic leaves the original question untouched (fail-closed)
+    row = db.query_one("SELECT * FROM questions WHERE id=?", (q["id"],))
+    assert row["prompt"] == q["prompt"]

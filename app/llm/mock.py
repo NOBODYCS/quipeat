@@ -60,7 +60,7 @@ class MockProvider:
         else:
             chunk = user[:80].replace("\n", " ")
             payload = {"questions": [
-                {"prompt": f"[mock] According to the text, what is discussed here: {chunk}…?",
+                {"prompt": f"[mock] What main idea is discussed here: {chunk}…?",
                  "options": ["The main idea", "An unrelated topic", "A footnote", "Nothing"],
                  "correct_index": 0,
                  "explanation": "The chunk states its main idea directly.",
