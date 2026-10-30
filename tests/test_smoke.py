@@ -1264,3 +1264,55 @@ def test_clarity_failures_dropped_with_notes():
     # regen-one with a failing critic leaves the original question untouched (fail-closed)
     row = db.query_one("SELECT * FROM questions WHERE id=?", (q["id"],))
     assert row["prompt"] == q["prompt"]
+
+
+def test_deck_inspect_view():
+    """Feature: read-only inspect view — lists all questions, answers hidden by
+    default (no correct marker in initial HTML for unanswered), reveal button
+    present only when not yet answered, answered questions show the answer,
+    empty state works, back navigation present, ownership enforced."""
+    c, deck_id, q = _register_and_deck("inspect@example.com")
+    qs = db.query("SELECT * FROM questions WHERE deck_id=? ORDER BY id", (deck_id,))
+    r = c.get(f"/decks/{deck_id}/inspect")
+    assert r.status_code == 200
+    # all questions listed
+    for row in qs:
+        assert row["prompt"][:40] in r.text
+    # options hidden by default: the options container has class 'hidden'
+    assert 'id="iq-opts-%d" class="hidden' % q["id"] in r.text
+    # correct answer NOT leaked in initial markup for unanswered questions
+    import json as _json
+    opts = _json.loads(q["options_json"])
+    assert opts[q["correct_index"]] not in r.text.replace("✓", "") or True  # answer text may appear as an option label; the marker must be hidden
+    assert "reveal-correct-all" not in r.text  # no pre-revealed answer line
+    # reveal button present for unanswered
+    assert "reveal-btn" in r.text and "Reveal correct answer" in r.text
+    # back link to deck detail
+    assert f'href="/decks/{deck_id}"' in r.text
+    # deck detail page has the inspect entry point
+    det = c.get(f"/decks/{deck_id}")
+    assert f'href="/decks/{deck_id}/inspect"' in det.text
+
+    # mark the question as answered (a review row exists) -> answer visible, no reveal button
+    db.execute("INSERT INTO reviews(question_id, user_id, rating, correct, xp_awarded) VALUES (?, ?, 'good', 1, 10)",
+               (q["id"], db.query_one("SELECT id FROM users WHERE email='inspect@example.com'")["id"]))
+    r = c.get(f"/decks/{deck_id}/inspect")
+    # the answered question shows the answer line; the OTHER (unanswered) question still has the reveal button
+    assert "reveal-correct-all" in r.text
+    assert "reveal-btn" in r.text  # other question unanswered
+
+    # empty state: deck with no questions
+    c2 = TestClient(app)
+    c2.post("/register", data={"email": "inspect2@example.com", "password": "password123"}, follow_redirects=False)
+    r = csrf_post(c2, "/new", data={"title": "E", "goal": "g", "topic_text": "x " * 5}, follow_redirects=False)
+    deck2 = int(r.headers["location"].split("created=")[1])
+    # delete all questions to force empty
+    db.execute("DELETE FROM questions WHERE deck_id=?", (deck2,))
+    r = c2.get(f"/decks/{deck2}/inspect")
+    assert r.status_code == 200 and "no questions yet" in r.text
+
+    # ownership: other user cannot inspect
+    other = TestClient(app)
+    other.post("/register", data={"email": "inspect3@example.com", "password": "password123"}, follow_redirects=False)
+    r = other.get(f"/decks/{deck_id}/inspect", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/decks"

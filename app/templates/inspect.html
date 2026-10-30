@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ deck.title }} · {{ t("inspect_title") }} · Quipeat{% endblock %}
+{% block content %}
+<div class="mb-6">
+  <a href="/decks/{{ deck.id }}" class="text-sm text-mist-400 hover:text-volt-300">← {{ deck.title }}</a>
+  <h1 class="text-2xl font-extrabold mt-1 break-words">{{ t("inspect_title") }}</h1>
+  <p class="text-sm text-mist-400 mt-1">{{ questions | length }} {{ t("questions_n") }} · {{ t("inspect_hint") }}</p>
+</div>
+{% if not questions %}
+<div class="card border-dashed p-8 text-center">
+  <p class="text-mist-400">{{ t("inspect_empty") }}</p>
+  <a href="/decks/{{ deck.id }}" class="btn-ghost btn-sm mt-4 inline-block">← {{ t("back") }}</a>
+</div>
+{% else %}
+<div class="space-y-3" id="inspect-list">
+  {% for q in questions %}
+  <div class="card p-4" id="iq-{{ q.id }}">
+    <button type="button" class="w-full text-left flex items-start gap-3"
+            onclick="var p = document.getElementById('iq-opts-{{ q.id }}'); p.classList.toggle('hidden'); this.setAttribute('aria-expanded', p.classList.contains('hidden') ? 'false' : 'true');">
+      <span class="chip shrink-0 mt-0.5">{{ loop.index }}</span>
+      <span class="font-semibold flex-1">{{ q.prompt }}</span>
+      <svg class="h-4 w-4 shrink-0 text-mist-500 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <div id="iq-opts-{{ q.id }}" class="hidden mt-3 space-y-1.5 text-sm">
+      {% for opt in q.options %}
+      <div class="rounded-lg border px-3 py-2 border-ink-700 bg-ink-900 text-mist-300 flex items-center">
+        <span class="font-semibold mr-2">{{ "ABCD"[loop.index0] }})</span>{{ opt }}
+        <span class="hidden reveal-correct ml-auto text-volt-300 font-bold">✓</span>
+      </div>
+      {% endfor %}
+      {% if not q.answered %}
+      <button type="button" class="btn-ghost btn-sm mt-2 reveal-btn"
+              onclick="var box = document.getElementById('iq-{{ q.id }}'); box.querySelectorAll('.reveal-correct').forEach(function (el, i) { if (i === {{ q.correct_index }}) el.classList.remove('hidden'); }); this.classList.add('hidden');">
+        {{ t("reveal_answer") }}
+      </button>
+      {% else %}
+      <p class="text-xs text-volt-300 mt-2 reveal-correct-all">✓ {{ t("answer_label") }}: {{ "ABCD"[q.correct_index] }}) {{ q.options[q.correct_index] }}</p>
+      {% endif %}
+      {% if q.explanation %}<p class="text-xs text-mist-500 mt-2">{{ q.explanation }}</p>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

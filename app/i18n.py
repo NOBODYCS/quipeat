@@ -22,6 +22,8 @@ STRINGS = {
         "err_fetch": "Could not download this link. Check the URL and try again.",
         "err_extract": "No readable text found at this link.",
         "generate_btn": "Generate my quiz", "back": "← Back", "start_studying": "Start studying", "review_questions": "Review questions",
+        "inspect_deck": "Inspect deck", "inspect_title": "Inspect deck", "inspect_hint": "Tap a question to show or hide its options. Answers stay hidden until you reveal them.", "inspect_empty": "This deck has no questions yet.", "reveal_answer": "Reveal correct answer", "answer_label": "Correct answer",
+
         "study_pick_title": "Pick a deck to study", "empty_study": "No ready decks yet. Create one from a source first.",
         "study_done_title": "All caught up", "study_done_body": "No cards are due right now. Come back later — spaced repetition will bring them back at the right time.",
         "study_another": "Study another deck", "next_question": "Next question", "correct": "Correct", "not_quite": "Not quite",
@@ -116,6 +118,8 @@ STRINGS = {
         "err_fetch": "Nie udało się pobrać tego linku. Sprawdź adres i spróbuj ponownie.",
         "err_extract": "Nie znaleziono czytelnego tekstu pod tym linkiem.",
         "generate_btn": "Wygeneruj mój quiz", "back": "← Wstecz", "start_studying": "Rozpocznij naukę", "review_questions": "Przejrzyj pytania",
+        "inspect_deck": "Przejrzyj talię", "inspect_title": "Przegląd talii", "inspect_hint": "Dotknij pytania, aby pokazać lub ukryć odpowiedzi. Prawidłowa odpowiedź zostaje ukryta, dopóki jej nie ujawnisz.", "inspect_empty": "Ta talia nie ma jeszcze pytań.", "reveal_answer": "Pokaż poprawną odpowiedź", "answer_label": "Poprawna odpowiedź",
+
         "study_pick_title": "Wybierz talię do nauki", "empty_study": "Brak gotowych talii. Najpierw utwórz jedną ze źródła.",
         "study_done_title": "Wszystko ogarnięte", "study_done_body": "Nie ma teraz kart do powtórki. Wróć później — powtórki rozłożone w czasie przywrócą je we właściwym momencie.",
         "study_another": "Ucz się innej talii", "next_question": "Następne pytanie", "correct": "Dobrze", "not_quite": "Nie do końca",

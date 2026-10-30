@@ -477,6 +477,23 @@ async def deck_questions(request: Request, deck_id: int):
     return page(request, "questions.html", questions=items, deck=deck)
 
 
+@app.get("/decks/{deck_id}/inspect", response_class=HTMLResponse)
+async def deck_inspect(request: Request, deck_id: int):
+    """Read-only study view of every question in the deck. Answers hidden by
+    default; revealed per-question via JS toggle. The true answer is only
+    revealable when the user has reviewed the question before."""
+    user = require_user(request)
+    deck = owned_deck(user, deck_id)
+    if not deck:
+        return RedirectResponse("/decks", status_code=303)
+    qs = db.query(
+        "SELECT q.*, EXISTS(SELECT 1 FROM reviews r WHERE r.question_id = q.id AND r.user_id = ?)"
+        " AS answered FROM questions q WHERE q.deck_id = ? ORDER BY q.id",
+        (user["id"], deck_id))
+    items = [{**dict(q), "options": json.loads(q["options_json"])} for q in qs]
+    return page(request, "inspect.html", questions=items, deck=deck)
+
+
 # ---------- study ----------
 
 @app.get("/study", response_class=HTMLResponse)
