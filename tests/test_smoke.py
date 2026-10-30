@@ -46,6 +46,9 @@ def test_register_login_and_full_flow():
 
     q = qs[0]
     r = client.post(f"/study/{deck_id}/answer",
+                    data={"question_id": q["id"], "choice": q["correct_index"]})
+    assert r.status_code == 200 and "Easy" in r.text  # step 1: reveal + self-rating
+    r = client.post(f"/study/{deck_id}/rate",
                     data={"question_id": q["id"], "choice": q["correct_index"], "rating": "good"})
     assert r.status_code == 200 and "XP" in r.text
 

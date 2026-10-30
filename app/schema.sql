@@ -154,3 +154,4 @@ CREATE INDEX IF NOT EXISTS idx_reviews_question ON reviews(question_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_user ON reviews(user_id);
 -- NOTE: onboarded_at is added by db.init_db() (idempotent ALTER), not here,
 -- so re-running this script on an existing DB never fails.
+-- NOTE: applied idempotently by db.init_db()

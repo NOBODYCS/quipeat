@@ -22,29 +22,29 @@
       <nav class="hidden md:flex items-center gap-1 ml-2">
         <div class="relative" id="study-menu">
           <button class="navlink !border !border-volt-600/50 !bg-volt-400/10 !text-volt-300" id="study-menu-btn" onclick="document.getElementById('study-dd').classList.toggle('hidden')">
-            🎯 {{ t("nav_study") }}
+            <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg> {{ t("nav_study") }}
             <svg class="inline h-3 w-3" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <div id="study-dd" class="hidden absolute left-0 mt-1 w-48 card !p-1.5 z-30">
-            <a href="/study" class="block rounded-lg px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-ink-700">📚 {{ t("pick_deck") }}</a>
-            <a href="/new" class="block rounded-lg px-3 py-2 text-sm font-bold text-volt-300 hover:bg-ink-700">＋ {{ t("nav_new") }}</a>
+            <a href="/study" class="block rounded-lg px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-ink-700"><svg class="inline h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19a2 2 0 0 1 2-2h13"/></svg>{{ t("pick_deck") }}</a>
+            <a href="/new" class="block rounded-lg px-3 py-2 text-sm font-bold text-volt-300 hover:bg-ink-700"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> {{ t("nav_new") }}</a>
           </div>
         </div>
-        <a href="/decks" class="navlink">🗂 {{ t("nav_decks") }}</a>
-        {% if user.role == 'admin' %}<a href="/admin" class="navlink">🛠 {{ t("nav_admin") }}</a>{% endif %}
+        <a href="/decks" class="navlink"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> {{ t("nav_decks") }}</a>
+        {% if user.role == 'admin' %}<a href="/admin" class="navlink"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6L14 13l-3-3z"/></svg> {{ t("nav_admin") }}</a>{% endif %}
       </nav>
       <div class="ml-auto flex items-center gap-1.5">
-        {% if user.streak_days > 0 %}<span class="chip hidden sm:inline-flex" title="{{ t('streak') }}">🔥{{ user.streak_days }}</span>{% endif %}
+        {% if user.streak_days > 0 and not user.hide_streaks %}<span class="chip hidden sm:inline-flex" title="{{ t('streak') }}">🔥{{ user.streak_days }}{% if user.freeze_available %} 🛡{% endif %}</span>{% endif %}
         <span class="chip hidden sm:inline-flex" title="{{ t('level') }} · {{ t('total_xp') }}">Lvl {{ user.level }} · {{ user.xp_total }} XP</span>
         {% if user.role == 'admin' %}<span class="chip chip-volt hidden sm:inline-flex">admin</span>{% endif %}
         <form method="post" action="/settings/lang">
           <input type="hidden" name="lang" value="{{ 'pl' if lang == 'en' else 'en' }}">
-          <button class="iconbtn" title="{{ t('site_language') }}">{{ '🇵🇱' if lang == 'en' else '🇬🇧' }}</button>
+          <button class="iconbtn" title="{{ t('site_language') }}" aria-label="{{ t('site_language') }}">{{ '🇵🇱' if lang == 'en' else '🇬🇧' }}</button>
         </form>
-        <a href="/onboarding?replay=1" class="iconbtn hidden sm:grid" title="{{ t('replay_tutorial') }}">❓</a>
-        <a href="/settings" class="iconbtn" title="{{ t('nav_settings') }}">⚙️</a>
+        <a href="/onboarding?replay=1" class="iconbtn hidden sm:grid" title="{{ t('replay_tutorial') }}" aria-label="{{ t('replay_tutorial') }}"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.3a2.6 2.6 0 0 1 5.1.7c0 1.7-2.4 2.2-2.4 3.5"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg></a>
+        <a href="/settings" class="iconbtn" title="{{ t('nav_settings') }}" aria-label="{{ t('nav_settings') }}"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.5a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.4 2.4h4l.4-2.4a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg></a>
         <form method="post" action="/logout">
-          <button class="iconbtn" title="{{ t('nav_logout') }}">⏻</button>
+          <button class="iconbtn" title="{{ t('nav_logout') }}" aria-label="{{ t('nav_logout') }}"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg></button>
         </form>
       </div>
     </div>
@@ -94,16 +94,16 @@
     <div class="absolute inset-0 bg-black/60" onclick="document.getElementById('mobile-study-sheet').classList.add('hidden')"></div>
     <div class="absolute bottom-0 inset-x-0 rounded-t-3xl border-t border-ink-700 bg-ink-900 p-4 pb-6">
       <div class="mx-auto w-10 h-1 rounded-full bg-ink-600 mb-4"></div>
-      <div class="text-sm font-extrabold text-white mb-2 px-1">🎯 {{ t("nav_study") }}</div>
-      <a href="/study" class="block rounded-xl bg-ink-850 border border-ink-700 px-4 py-3.5 mb-2 text-sm font-bold text-slate-100" onclick="document.getElementById('mobile-study-sheet').classList.add('hidden')">📚 {{ t("pick_deck") }}</a>
-      <a href="/new" class="block rounded-xl bg-volt-400 px-4 py-3.5 text-sm font-extrabold text-ink-950 text-center" onclick="document.getElementById('mobile-study-sheet').classList.add('hidden')">＋ {{ t("nav_new") }}</a>
+      <div class="text-sm font-extrabold text-white mb-2 px-1"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg> {{ t("nav_study") }}</div>
+      <a href="/study" class="block rounded-xl bg-ink-850 border border-ink-700 px-4 py-3.5 mb-2 text-sm font-bold text-slate-100" onclick="document.getElementById('mobile-study-sheet').classList.add('hidden')"><svg class="inline h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19a2 2 0 0 1 2-2h13"/></svg>{{ t("pick_deck") }}</a>
+      <a href="/new" class="block rounded-xl bg-volt-400 px-4 py-3.5 text-sm font-extrabold text-ink-950 text-center" onclick="document.getElementById('mobile-study-sheet').classList.add('hidden')"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> {{ t("nav_new") }}</a>
     </div>
   </div>
   <nav class="fixed bottom-0 inset-x-0 z-20 border-t border-ink-700 bg-ink-900/95 backdrop-blur md:hidden">
     <div class="mx-auto max-w-5xl grid grid-cols-3">
-      <a href="/decks" class="tablink {% if request.url.path.startswith('/decks') %}tablink-active{% endif %}"><span>🗂</span>{{ t("nav_decks") }}</a>
-      <button class="tablink {% if request.url.path.startswith('/study') or request.url.path == '/new' %}tablink-active{% endif %}" onclick="document.getElementById('mobile-study-sheet').classList.remove('hidden')"><span>🎯</span>{{ t("nav_study") }} <svg class="inline h-2.5 w-2.5" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-      <a href="/stats" class="tablink {% if request.url.path == '/stats' %}tablink-active{% endif %}"><span>📊</span>{{ t("nav_stats") }}</a>
+      <a href="/decks" class="tablink {% if request.url.path.startswith('/decks') %}tablink-active{% endif %}"><span><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>{{ t("nav_decks") }}</a>
+      <button class="tablink {% if request.url.path.startswith('/study') or request.url.path == '/new' %}tablink-active{% endif %}" onclick="document.getElementById('mobile-study-sheet').classList.remove('hidden')"><span><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>{{ t("nav_study") }} <svg class="inline h-2.5 w-2.5" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <a href="/stats" class="tablink {% if request.url.path == '/stats' %}tablink-active{% endif %}"><span><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg></span>{{ t("nav_stats") }}</a>
     </div>
   </nav>
   {% endif %}
@@ -114,5 +114,11 @@
       if (dd && btn && !dd.contains(e.target) && !btn.contains(e.target)) dd.classList.add('hidden');
     });
   </script>
+<script>
+  document.addEventListener('submit', function (e) {
+    var b = e.target.querySelector('button[type="submit"], button:not([type])');
+    if (b && !b.disabled) { b.disabled = true; b.classList.add('loading'); }
+  }, true);
+</script>
 </body>
 </html>

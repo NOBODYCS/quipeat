@@ -26,13 +26,20 @@ def touch_activity(user_id: int) -> dict:
     user = db.query_one("SELECT * FROM users WHERE id = ?", (user_id,))
     last = user["last_active_day"]
     streak = user["streak_days"]
+    freeze_used = False
     if last != today:
-        if last and (date.today() - date.fromisoformat(last)).days == 1:
+        gap = (date.today() - date.fromisoformat(last)).days if last else 99
+        if gap == 1:
             streak += 1
-        elif last is None or last != today:
-            streak = 1 if last is None or (date.today() - date.fromisoformat(last)).days > 1 else streak
+        elif gap == 2 and user["freeze_available"]:
+            freeze_used = True  # freeze protects the streak across one missed day
+            db.execute("UPDATE users SET freeze_available = 0 WHERE id = ?", (user_id,))
+        else:
+            streak = 1
         db.execute("UPDATE users SET streak_days = ?, last_active_day = ? WHERE id = ?",
                    (streak, today, user_id))
+        if streak > 0 and streak % 7 == 0:
+            db.execute("UPDATE users SET freeze_available = 1 WHERE id = ?", (user_id,))
     else:
         streak = user["streak_days"]
     new_badges = []
@@ -42,7 +49,7 @@ def touch_activity(user_id: int) -> dict:
                 "SELECT 1 FROM user_badges WHERE user_id = ? AND badge = ?", (user_id, badge)):
             db.execute("INSERT INTO user_badges(user_id, badge) VALUES (?, ?)", (user_id, badge))
             new_badges.append(badge)
-    return {"streak": streak, "new_badges": new_badges}
+    return {"streak": streak, "new_badges": new_badges, "freeze_used": freeze_used}
 
 
 def check_badges(user_id: int, total_reviews: int, session_perfect: bool = False) -> list[str]:

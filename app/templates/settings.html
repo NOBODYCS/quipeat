@@ -2,8 +2,8 @@
 {% block title %}Settings · Quipeat{% endblock %}
 {% block content %}
 <h1 class="text-2xl font-extrabold mb-6">{{ t("settings_title") }}</h1>
-{% if msg %}<div class="alert-ok">{{ msg }}</div>{% endif %}
-{% if error %}<div class="alert-error">{{ error }}</div>{% endif %}
+{% if msg %}<div class="alert-ok" role="status">{{ msg }}</div>{% endif %}
+{% if error %}<div class="alert-error" role="alert">{{ error }}</div>{% endif %}
 
 <div class="card p-5 mb-6">
   {% if builtin_available and user.role in ('admin', 'privileged') %}
@@ -39,7 +39,8 @@
     </div>
     <div>
       <label for="api_key" class="label">{{ t("api_key") }}</label>
-      <input name="api_key" id="api_key" type="password" autocomplete="off" placeholder="sk-…" required class="input">
+      <div class="relative"><input name="api_key" id="api_key" type="password" autocomplete="new-password" placeholder="sk-…" required class="input pr-12">
+        <button type="button" class="iconbtn !h-8 !w-8 absolute right-1.5 top-1/2 -translate-y-1/2 !border-0 !bg-transparent" onclick="var i=document.getElementById('api_key'); i.type = i.type==='password'?'text':'password'; this.textContent = i.type==='password'?'👁':'🙈';" aria-label="Show/hide API key">👁</button></div>
     </div>
     <div>
       <label for="label" class="label">{{ t("label") }}</label>
@@ -89,6 +90,14 @@
   </form>
 </div>
 
+<div class="card p-5 mb-6">
+  <h2 class="text-lg font-extrabold mb-3">🔥 {{ t("streak") }}</h2>
+  <p class="text-sm text-slate-400 mb-3">{% if user.freeze_available %}🛡 {{ t("freeze_avail") }} (1){% endif %}</p>
+  <form method="post" action="/settings/streaks">
+    <input type="hidden" name="hide" value="{{ 0 if user.hide_streaks else 1 }}">
+    <button class="btn-ghost text-xs">{{ t("hide_streaks") }}: {% if user.hide_streaks %}ON{% else %}OFF{% endif %}</button>
+  </form>
+</div>
 <div class="card p-5">
   <h2 class="text-lg font-extrabold mb-3">{{ t("help") }}</h2>
   <a href="/onboarding?replay=1" class="btn-ghost">↺ {{ t("replay_tutorial") }}</a>

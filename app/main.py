@@ -302,17 +302,39 @@ async def study_session(request: Request, deck_id: int):
     deck = db.query_one("SELECT * FROM decks WHERE id = ? AND user_id = ?", (deck_id, user["id"]))
     if not deck:
         return RedirectResponse("/study", status_code=303)
+    now = datetime.now(timezone.utc).isoformat()
+    due = db.query_one(
+        "SELECT COUNT(*) c, MIN(due_at) next_due FROM questions WHERE deck_id = ? AND due_at > ?",
+        (deck_id, now))
     q = db.query_one(
         "SELECT * FROM questions WHERE deck_id = ? AND due_at <= ? ORDER BY due_at LIMIT 1",
-        (deck_id, datetime.now(timezone.utc).isoformat()))
+        (deck_id, now))
     if not q:
-        return page(request, "study_done.html", deck=deck)
-    return page(request, "study_card.html", deck=deck, q={**dict(q), "options": json.loads(q["options_json"])})
+        return page(request, "study_done.html", deck=deck, next_due=due["next_due"])
+    due_count = db.query_one(
+        "SELECT COUNT(*) c FROM questions WHERE deck_id = ? AND due_at <= ?", (deck_id, now))["c"]
+    return page(request, "study_card.html", deck=deck,
+                q={**dict(q), "options": json.loads(q["options_json"])},
+                due_count=due_count, est_min=max(1, round(due_count * 0.4)))
 
 
 @app.post("/study/{deck_id}/answer")
 async def study_answer(request: Request, deck_id: int, question_id: int = Form(...),
-                       choice: int = Form(...), rating: str = Form("good")):
+                       choice: int = Form(...)):
+    """Step 1: user picked an option -> show result + self-rating buttons."""
+    user = require_user(request)
+    q = db.query_one("SELECT * FROM questions WHERE id = ? AND deck_id = ?", (question_id, deck_id))
+    if not q:
+        return RedirectResponse(f"/study/{deck_id}", status_code=303)
+    correct = 1 if choice == q["correct_index"] else 0
+    return page(request, "_answer_reveal.html", q={**dict(q), "options": json.loads(q["options_json"])},
+                choice=choice, correct=correct, deck_id=deck_id)
+
+
+@app.post("/study/{deck_id}/rate")
+async def study_rate(request: Request, deck_id: int, question_id: int = Form(...),
+                     choice: int = Form(...), rating: str = Form(...)):
+    """Step 2: apply the self-rating, award XP, continue."""
     user = require_user(request)
     q = db.query_one("SELECT * FROM questions WHERE id = ? AND deck_id = ?", (question_id, deck_id))
     if not q:
@@ -344,10 +366,56 @@ async def study_answer(request: Request, deck_id: int, question_id: int = Form(.
         sess_id = sess["id"]
     db.execute("UPDATE study_sessions SET cards_reviewed = cards_reviewed + 1, xp_earned = xp_earned + ? WHERE id = ?",
                (xp, sess_id))
-    return page(request, "_answer_result.html", correct=correct, xp=xp,
-                explanation=q["explanation"], options=json.loads(q["options_json"]),
-                correct_index=q["correct_index"], deck_id=deck_id,
-                award=award, activity=activity, badges=badges)
+    nxt = db.query_one(
+        "SELECT * FROM questions WHERE deck_id = ? AND due_at <= ? AND id != ? ORDER BY due_at LIMIT 1",
+        (deck_id, datetime.now(timezone.utc).isoformat(), q["id"]))
+    if nxt:
+        return page(request, "_answer_result.html", correct=correct, xp=xp,
+                    explanation=q["explanation"], options=json.loads(q["options_json"]),
+                    correct_index=q["correct_index"], deck_id=deck_id,
+                    award=award, activity=activity, badges=badges, has_next=True)
+    sess_row = db.query_one("SELECT * FROM study_sessions WHERE id = ?", (sess_id,))
+    db.execute("UPDATE study_sessions SET ended_at = datetime('now') WHERE id = ?", (sess_id,))
+    acc = db.query_one("SELECT ROUND(100.0*SUM(correct)/COUNT(*),1) a FROM reviews WHERE user_id=? AND id IN (SELECT id FROM reviews WHERE reviewed_at >= ?)", (user["id"], sess_row["started_at"]))
+    deck = db.query_one("SELECT * FROM decks WHERE id = ?", (deck_id,))
+    next_due = db.query_one("SELECT MIN(due_at) d FROM questions WHERE deck_id = ? AND due_at > ?",
+                            (deck_id, datetime.now(timezone.utc).isoformat()))["d"]
+    return page(request, "study_summary.html", deck=deck, correct=correct, xp=xp,
+                cards=sess_row["cards_reviewed"], xp_total=sess_row["xp_earned"],
+                accuracy=acc["a"] or 0, award=award, activity=activity, badges=badges,
+                next_due=next_due)
+
+
+@app.post("/questions/{qid}/flag")
+async def flag_question(request: Request, qid: int):
+    user = require_user(request)
+    db.execute("UPDATE questions SET flagged = 1 WHERE id = ?", (qid,))
+    return RedirectResponse(request.headers.get("referer", "/decks") + ("&" if "?" in request.headers.get("referer","") else "?") + "flagged=1", status_code=303)
+
+
+@app.post("/decks/{deck_id}/regen")
+async def regen_deck(request: Request, deck_id: int):
+    user = require_user(request)
+    deck = db.query_one("SELECT * FROM decks WHERE id = ? AND user_id = ?", (deck_id, user["id"]))
+    if not deck:
+        return RedirectResponse("/decks", status_code=303)
+    db.execute("UPDATE decks SET status='draft' WHERE id = ?", (deck_id,))
+    job_id = start_generation(user["id"], deck_id)
+    return RedirectResponse(f"/decks/{deck_id}?job={job_id}", status_code=303)
+
+
+@app.post("/decks/{deck_id}/delete")
+async def delete_deck(request: Request, deck_id: int):
+    user = require_user(request)
+    db.execute("DELETE FROM decks WHERE id = ? AND user_id = ?", (deck_id, user["id"]))
+    return RedirectResponse("/decks", status_code=303)
+
+
+@app.post("/settings/streaks")
+async def toggle_streaks(request: Request, hide: int = Form(0)):
+    user = require_user(request)
+    db.execute("UPDATE users SET hide_streaks = ? WHERE id = ?", (hide, user["id"]))
+    return RedirectResponse("/settings", status_code=303)
 
 
 # ---------- stats ----------

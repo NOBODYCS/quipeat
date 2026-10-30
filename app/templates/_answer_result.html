@@ -1,4 +1,4 @@
-<div class="mx-auto max-w-2xl" id="card-area">
+<div class="mx-auto max-w-2xl" id="card-area" aria-live="polite">
   <div class="rounded-2xl border {% if correct %}border-emerald-700 bg-emerald-950/40{% else %}border-red-800 bg-red-950/40{% endif %} p-6">
     <div class="flex items-center justify-between mb-3">
       <span class="font-semibold {% if correct %}text-emerald-300{% else %}text-red-300{% endif %}">
@@ -14,13 +14,14 @@
   @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 </style>
 <script>
+  var nx = document.querySelector('#card-area a.btn-primary'); if (nx) nx.focus();
   document.querySelectorAll('.toast').forEach(function (el) { setTimeout(function () { el.style.transition = 'opacity .5s'; el.style.opacity = '0'; setTimeout(function(){ el.remove(); }, 500); }, 2600); });
 </script>
     <p class="text-sm text-slate-300 mb-4">{{ explanation }}</p>
-        {% if award.leveled_up %}<div class="toast md:hidden" id="toast-level">🎉 {{ t("toast_level_up") }} {{ award.level }}!</div>{% endif %}
-    {% if badges %}<div class="toast md:hidden" id="toast-badge">🏅 {% set names = [] %}{% for b in badges %}{% set _ = names.append(t("badge_" ~ b)) %}{% endfor %}{{ t("toast_badge") }}: {{ names | join(", ") }}</div>{% endif %}
+        {% if award.leveled_up %}<div class="toast md:hidden" role="status" id="toast-level">🎉 {{ t("toast_level_up") }} {{ award.level }}!</div>{% endif %}
+    {% if badges %}<div class="toast md:hidden" role="status" id="toast-badge">🏅 {% set names = [] %}{% for b in badges %}{% set _ = names.append(t("badge_" ~ b)) %}{% endfor %}{{ t("toast_badge") }}: {{ names | join(", ") }}</div>{% endif %}
     <div class="flex gap-2 mt-4">
-      <a href="/study/{{ deck_id }}" class="flex-1 text-center rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold py-2 text-sm">{{ t("next_question") }}</a>
+      <a href="/study/{{ deck_id }}" class="btn-primary flex-1">{{ t("next_question") }} →</a>
     </div>
   </div>
 </div>

@@ -32,6 +32,13 @@ def init_db() -> None:
             conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'member'")
         if "lang" not in cols:
             conn.execute("ALTER TABLE users ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'")
+        if "freeze_available" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN freeze_available INTEGER NOT NULL DEFAULT 1")
+        if "hide_streaks" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN hide_streaks INTEGER NOT NULL DEFAULT 0")
+        qcols = {r["name"] for r in conn.execute("PRAGMA table_info(questions)").fetchall()}
+        if "flagged" not in qcols:
+            conn.execute("ALTER TABLE questions ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0")
         conn.commit()
         _ensure_admin(conn)
         conn.commit()

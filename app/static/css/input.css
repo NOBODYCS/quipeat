@@ -3,7 +3,11 @@
 @tailwind utilities;
 
 @layer base {
-  html { letter-spacing: 0.005em; }
+  html { letter-spacing: 0.005em; scroll-padding-top: 76px; scroll-padding-bottom: 96px; }
+  :focus-visible { outline: 2px solid #c8f04a; outline-offset: 2px; border-radius: 8px; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
   body {
     background:
       radial-gradient(1200px 500px at 80% -10%, rgba(167, 139, 250, 0.08), transparent 60%),
@@ -13,14 +17,16 @@
 }
 
 @layer components {
+  .btn[disabled], .btn.loading { @apply opacity-60 pointer-events-none; }
+
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition select-none active:scale-[.98] min-h-[44px];
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition select-none active:scale-[.98] min-h-[44px];
   }
   .btn-primary {
     @apply btn bg-volt-400 text-ink-950 shadow-btn hover:bg-volt-300;
   }
   .btn-ghost {
-    @apply btn border border-ink-600 bg-ink-800 text-slate-200 hover:bg-ink-700 hover:border-ink-600;
+    @apply btn border border-ink-600 bg-ink-800 text-slate-200 hover:bg-ink-750 hover:border-ink-600;
   }
   .btn-danger {
     @apply btn border border-red-900/60 bg-red-950/50 text-red-300 hover:bg-red-900/40;
@@ -28,8 +34,9 @@
   .card {
     @apply rounded-2xl border border-ink-700 bg-ink-850 shadow-card;
   }
+  .card-hover { @apply transition hover:bg-ink-750 hover:border-volt-600/50 hover:-translate-y-0.5; }
   .input {
-    @apply w-full rounded-xl border border-ink-600 bg-ink-900 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-volt-400 focus:outline-none focus:ring-2 focus:ring-volt-400/25 min-h-[44px];
+    @apply w-full rounded-xl border border-ink-600 bg-ink-900 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-[#8b98ad] focus:border-volt-400 focus:outline-none focus:ring-2 focus:ring-volt-400/25 min-h-[44px];
   }
   .label {
     @apply block text-sm font-semibold text-slate-300 mb-1.5;
@@ -53,7 +60,7 @@
     @apply flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-bold text-slate-400 hover:text-volt-300 transition;
   }
   .iconbtn {
-    @apply grid h-9 w-9 place-items-center rounded-xl border border-ink-600 bg-ink-800 text-base leading-none hover:bg-ink-700 hover:border-ink-600 transition active:scale-95 cursor-pointer;
+    @apply grid h-10 w-10 place-items-center rounded-full border border-ink-600 bg-ink-800 text-base leading-none hover:bg-ink-750 hover:border-ink-600 transition active:scale-95 cursor-pointer;
   }
   .tablink-active {
     @apply text-volt-400;

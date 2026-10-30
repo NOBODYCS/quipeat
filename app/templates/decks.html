@@ -6,16 +6,27 @@
   <a href="/new" class="btn-primary shrink-0">{{ t("new_deck") }}</a>
 </div>
 {% if not decks %}
-<div class="card border-dashed p-10 text-center">
-  <div class="text-4xl mb-3">🗂</div>
-  <p class="text-slate-400">{{ t("empty_decks") }}</p>
-  <a href="/new" class="btn-primary mt-5 inline-flex">{{ t("create_one") }}</a>
+<div class="card border-dashed p-8">
+  <div class="text-4xl mb-3 text-center">🗂</div>
+  <p class="text-slate-400 text-center mb-5">{{ t("empty_decks") }}</p>
+  <div class="max-w-sm mx-auto space-y-2 text-sm">
+    <a href="/settings" class="flex items-center gap-3 rounded-xl border border-ink-700 bg-ink-900 px-4 py-3 hover:border-volt-600/50 transition">
+      <span class="chip">1</span><span class="font-semibold text-slate-200">{{ t("empty_checklist_llm") }}</span><span class="ml-auto text-volt-300">→</span>
+    </a>
+    <a href="/new" class="flex items-center gap-3 rounded-xl border border-ink-700 bg-ink-900 px-4 py-3 hover:border-volt-600/50 transition">
+      <span class="chip">2</span><span class="font-semibold text-slate-200">{{ t("empty_checklist_source") }}</span><span class="ml-auto text-volt-300">→</span>
+    </a>
+    <div class="flex items-center gap-3 rounded-xl border border-ink-700 bg-ink-900 px-4 py-3 opacity-60">
+      <span class="chip">3</span><span class="font-semibold text-slate-200">{{ t("empty_checklist_study") }}</span>
+    </div>
+  </div>
 </div>
 {% else %}
 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
   {% for d in decks %}
-  <a href="/decks/{{ d.id }}" class="card p-4 transition hover:border-volt-600/60 hover:-translate-y-0.5">
+  <a href="/decks/{{ d.id }}" class="card card-hover p-4 relative">
     <div class="font-semibold mb-1.5 truncate">{{ d.title }}</div>
+    <span class="absolute right-4 top-4 text-slate-600">→</span>
     <div class="flex flex-wrap gap-1.5 text-xs">
       <span class="chip">{{ d.source_kind }}</span>
       <span class="chip">{{ d.status }}</span>

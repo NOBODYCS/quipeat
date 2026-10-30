@@ -10,7 +10,7 @@
         <p class="text-xs text-slate-400">{{ t("register_sub") }}</p>
       </div>
     </div>
-    {% if error %}<div class="alert-error">{{ error }}</div>{% endif %}
+    {% if error %}<div class="alert-error" role="alert">{{ error }}</div>{% endif %}
     <form method="post" action="/register" class="space-y-4">
       <div>
         <label for="display_name" class="label">{{ t("display_name") }}</label>
@@ -18,11 +18,12 @@
       </div>
       <div>
         <label for="email" class="label">{{ t("email") }}</label>
-        <input id="email" name="email" type="email" autocomplete="username" required class="input">
+        <input id="email" name="email" type="email" autocomplete="email" required class="input">
       </div>
       <div>
         <label for="password" class="label">{{ t("password_min") }}</label>
-        <input id="password" name="password" type="password" autocomplete="new-password" required minlength="8" class="input">
+        <div class="relative"><input id="password" name="password" type="password" autocomplete="new-password" required minlength="8" class="input">
+        <button type="button" class="iconbtn !h-8 !w-8 absolute right-1.5 top-1/2 -translate-y-1/2 !border-0 !bg-transparent" onclick="var i=document.getElementById(\'password\'); i.type = i.type===\'password\'?\'text\':\'password\'; this.textContent = i.type===\'password\'?\'👁\':\'🙈\';" aria-label="Show/hide password">👁</button></div>
       </div>
       <button type="submit" class="btn-primary w-full">{{ t("create_account") }}</button>
     </form>

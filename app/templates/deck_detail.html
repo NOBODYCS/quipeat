@@ -21,5 +21,7 @@
 <div class="flex flex-wrap gap-3">
   <a href="/study/{{ deck.id }}" class="btn-primary">{{ t("start_studying") }}</a>
   <a href="/decks/{{ deck.id }}/questions" class="btn-ghost">{{ t("review_questions") }}</a>
+  <form method="post" action="/decks/{{ deck.id }}/regen"><button class="btn-ghost">↻ {{ t("regen") }}</button></form>
+  <form method="post" action="/decks/{{ deck.id }}/delete" onsubmit="return confirm('{{ t("confirm_delete") }}')"><button class="btn-danger">🗑 {{ t("delete_deck") }}</button></form>
 </div>
 {% endblock %}
