@@ -28,6 +28,7 @@
       <div class="ml-auto flex items-center gap-2">
         <span class="chip hidden sm:inline-flex">Lvl {{ user.level }}</span>
         <span class="chip chip-volt hidden sm:inline-flex">{{ user.xp_total }} XP{% if user.streak_days > 0 %} · 🔥{{ user.streak_days }}{% endif %}</span>
+        <a href="/onboarding?replay=1" class="navlink !px-2.5 hidden sm:block" title="Replay tutorial">❓</a>
         <a href="/settings" class="navlink !px-2.5">⚙</a>
         <form method="post" action="/logout"><button class="navlink !text-slate-400">Log out</button></form>
       </div>

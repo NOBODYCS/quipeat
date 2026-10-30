@@ -107,19 +107,21 @@ async def login(request: Request, email: str = Form(...), password: str = Form(.
 
 
 @app.get("/onboarding", response_class=HTMLResponse)
-async def onboarding(request: Request, step: int = 1):
+async def onboarding(request: Request, step: int = 1, replay: int = 0):
     user = require_user(request)
-    if user["onboarded_at"]:
+    if user["onboarded_at"] and not replay:
         return RedirectResponse("/decks", status_code=303)
     step = max(1, min(4, step))
-    return page(request, "onboarding.html", step=step, total_steps=4)
+    return page(request, "onboarding.html", step=step, total_steps=4, replay=bool(replay))
 
 
 @app.post("/onboarding/finish")
-async def onboarding_finish(request: Request):
+async def onboarding_finish(request: Request, replay: int = Form(0)):
     user = require_user(request)
     db.execute("UPDATE users SET onboarded_at = datetime('now') WHERE id = ?", (user["id"],))
-    return RedirectResponse("/decks", status_code=303)
+    if replay:
+        return RedirectResponse("/decks", status_code=303)
+    return RedirectResponse("/settings", status_code=303)
 
 
 @app.post("/logout")

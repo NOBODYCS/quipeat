@@ -1,47 +1,58 @@
 {% extends "base.html" %}
 {% block title %}Settings · Quipeat{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-bold mb-6">Settings</h1>
-{% if msg %}<div class="mb-4 rounded-lg bg-emerald-950/60 border border-emerald-800 px-4 py-2 text-sm text-emerald-300">{{ msg }}</div>{% endif %}
-{% if error %}<div class="mb-4 rounded-lg bg-red-950/60 border border-red-800 px-4 py-2 text-sm text-red-300">{{ error }}</div>{% endif %}
+<h1 class="text-2xl font-extrabold mb-6">Settings</h1>
+{% if msg %}<div class="alert-ok">{{ msg }}</div>{% endif %}
+{% if error %}<div class="alert-error">{{ error }}</div>{% endif %}
 
-<div class="rounded-xl border border-slate-800 bg-slate-900 p-5 mb-6">
-  <h2 class="font-semibold mb-1">Connect an LLM</h2>
-  <p class="text-sm text-slate-400 mb-4">Paste your own API key. It is stored encrypted and only used server-side to generate questions. OpenRouter gives you access to many models with one key; Mistral uses your Mistral Studio key directly.</p>
-  <form method="post" action="/settings/keys" class="grid gap-3 sm:grid-cols-4">
-    <select name="provider" id="provider" class="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm">
-      {% for p in providers %}<option value="{{ p }}" {% if settings_row and settings_row.default_provider == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
-    </select>
-    <select name="model" id="model" class="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm sm:col-span-1">
-      {% for p, models in providers.items() %}
-        {% for m in models %}<option value="{{ m }}" data-provider="{{ p }}" {% if settings_row and settings_row.default_model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
-      {% endfor %}
-    </select>
-    <input name="api_key" type="password" autocomplete="off" placeholder="API key" required
-           class="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm sm:col-span-1">
-    <input name="label" type="text" placeholder="Label (optional)" class="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm">
-    <button type="submit" class="sm:col-span-4 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold py-2 text-sm">Save >Save key &amp; set active<amp; activate key</button>
+<div class="card p-5 mb-6">
+  <h2 class="text-lg font-extrabold mb-1">Connect an LLM</h2>
+  <p class="text-sm text-slate-400 mb-4">Paste your own API key — it's stored encrypted and used only server-side to generate questions. OpenRouter gives you many models with one key; Mistral uses your Mistral Studio key directly.</p>
+  <form method="post" action="/settings/keys" class="grid gap-3 sm:grid-cols-2">
+    <div>
+      <label for="provider" class="label">Provider</label>
+      <select name="provider" id="provider" class="input">
+        {% for p in providers %}<option value="{{ p }}" {% if settings_row and settings_row.default_provider == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="model" class="label">Model</label>
+      <select name="model" id="model" class="input">
+        {% for p, models in providers.items() %}
+          {% for m in models %}<option value="{{ m }}" data-provider="{{ p }}" {% if settings_row and settings_row.default_model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="api_key" class="label">API key</label>
+      <input name="api_key" id="api_key" type="password" autocomplete="off" placeholder="sk-…" required class="input">
+    </div>
+    <div>
+      <label for="label" class="label">Label (optional)</label>
+      <input name="label" id="label" type="text" placeholder="e.g. my main key" class="input">
+    </div>
+    <button type="submit" class="btn-primary sm:col-span-2">Save &amp; activate key</button>
   </form>
 </div>
 
-<div class="rounded-xl border border-slate-800 bg-slate-900 p-5 mb-6">
-  <h2 class="font-semibold mb-3">Saved keys</h2>
+<div class="card p-5 mb-6">
+  <h2 class="text-lg font-extrabold mb-3">Saved keys</h2>
   {% if not keys %}
-  <p class="text-sm text-slate-400">No keys yet.</p>
+  <p class="text-sm text-slate-400">No keys yet — add one above to start generating decks.</p>
   {% else %}
   <ul class="space-y-2">
     {% for k in keys %}
-    <li class="flex flex-wrap items-center gap-2 text-sm border border-slate-800 rounded-lg px-3 py-2">
-      <span class="font-medium">{{ k.provider }}</span>
-      <span class="text-slate-400">{{ k.masked }}</span>
-      {% if k.label %}<span class="text-slate-500">({{ k.label }})</span>{% endif %}
-      {% if settings_row and settings_row.active_key_id == k.id %}<span class="text-xs rounded bg-emerald-900/60 text-emerald-300 px-2 py-0.5">active</span>{% endif %}
-      <span class="ml-auto flex gap-2">
+    <li class="flex flex-wrap items-center gap-2 text-sm border border-ink-700 bg-ink-900 rounded-xl px-3 py-2.5">
+      <span class="font-semibold text-white">{{ k.provider }}</span>
+      <span class="text-slate-400 font-mono text-xs">{{ k.masked }}</span>
+      {% if k.label %}<span class="text-slate-500 text-xs">({{ k.label }})</span>{% endif %}
+      {% if settings_row and settings_row.active_key_id == k.id %}<span class="chip chip-volt">active</span>{% endif %}
+      <span class="ml-auto flex gap-3">
         {% if not (settings_row and settings_row.active_key_id == k.id) %}
         <form method="post" action="/settings/keys/{{ k.id }}/activate">
           <input type="hidden" name="provider" value="{{ k.provider }}">
           <input type="hidden" name="model" value="{{ settings_row.default_model if settings_row else '' }}">
-          <button class="text-xs text-emerald-400 hover:underline">Set active</button>
+          <button class="text-xs text-volt-300 font-semibold hover:underline">Set active</button>
         </form>
         {% endif %}
         <form method="post" action="/settings/keys/{{ k.id }}/delete"><button class="text-xs text-red-400 hover:underline">Delete</button></form>
@@ -52,17 +63,23 @@
   {% endif %}
 </div>
 
-<div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
-  <h2 class="font-semibold mb-3">Default model</h2>
-  <form method="post" action="/settings/model" class="flex gap-2">
-    <select name="provider" class="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm">
+<div class="card p-5 mb-6">
+  <h2 class="text-lg font-extrabold mb-3">Default model</h2>
+  <form method="post" action="/settings/model" class="flex flex-wrap gap-2">
+    <select name="provider" class="input !w-auto">
       {% for p in providers %}<option value="{{ p }}" {% if settings_row and settings_row.default_provider == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
     </select>
-    <input name="model" type="text" value="{{ settings_row.default_model if settings_row else '' }}" placeholder="model id (or pick above)"
-           class="flex-1 rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm">
-    <button class="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-slate-500">Save</button>
+    <input name="model" type="text" value="{{ settings_row.default_model if settings_row else '' }}" placeholder="model id"
+           class="input flex-1 min-w-[200px]">
+    <button class="btn-ghost">Save</button>
   </form>
 </div>
+
+<div class="card p-5">
+  <h2 class="text-lg font-extrabold mb-3">Help</h2>
+  <a href="/onboarding?replay=1" class="btn-ghost">↺ Replay the intro tutorial</a>
+</div>
+
 <script>
 document.getElementById('provider').addEventListener('change', function () {
   const sel = document.getElementById('model');

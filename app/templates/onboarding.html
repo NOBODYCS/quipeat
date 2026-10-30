@@ -35,11 +35,19 @@
   </div>
   {% else %}
   <div class="card p-6">
-    <h1 class="text-xl font-extrabold mb-1">3 · Study & level up</h1>
+    <h1 class="text-xl font-extrabold mb-1">3 · Study &amp; level up</h1>
     <p class="text-slate-400 text-sm mb-4"><b>🎯 Study</b> shows cards that are due. Answer and the app schedules the next review (spaced repetition). Correct answers earn <b class="text-volt-300">XP</b>, streaks keep you honest, and badges mark milestones.</p>
+    {% if replay %}
     <form method="post" action="/onboarding/finish">
-      <button class="btn-primary w-full">Build my first deck</button>
+      <input type="hidden" name="replay" value="1">
+      <button class="btn-primary w-full">Done</button>
     </form>
+    {% else %}
+    <p class="text-sm text-slate-400 mb-4">Last step: connect your LLM so the app can write questions for you.</p>
+    <form method="post" action="/onboarding/finish">
+      <button class="btn-primary w-full">Connect my LLM →</button>
+    </form>
+    {% endif %}
   </div>
   {% endif %}
 </div>
