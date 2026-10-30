@@ -38,22 +38,34 @@ def check_database() -> tuple[str, str]:
         return "down", str(e)
 
 
+def _probe_browser() -> None:
+    """Launch and close a headless browser once. Runs in a worker thread —
+    never on the event loop — so it is safe to call from sync and async
+    contexts alike (asyncio.run inside a running loop raises)."""
+    import asyncio
+
+    async def _run():
+        from crawl4ai import AsyncWebCrawler, BrowserConfig
+        async with AsyncWebCrawler(config=BrowserConfig(headless=True)) as crawler:
+            return True
+
+    asyncio.run(_run())
+
+
 def check_crawler() -> tuple[str, str]:
     """Is Crawl4AI importable and its Playwright browser actually launchable?
     Catches the 'browser executable missing' class of failure at startup and
     on demand, instead of discovering it per-crawl in a WARNING."""
     try:
-        from crawl4ai import AsyncWebCrawler, BrowserConfig
+        from crawl4ai import AsyncWebCrawler, BrowserConfig  # noqa: F401
     except Exception as e:
         return "down", f"crawl4ai not importable: {e}"
 
-    async def _probe():
-        import asyncio
-        async with AsyncWebCrawler(config=BrowserConfig(headless=True)) as crawler:
-            return True
+    import concurrent.futures
     try:
-        import asyncio
-        asyncio.run(_probe())
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_probe_browser)
+            future.result(timeout=60)
         return "ok", "JS rendering available"
     except Exception as e:
         return "degraded", f"browser unusable, falling back to trafilatura: {str(e)[:200]}"

@@ -1,6 +1,8 @@
+import concurrent.futures
 import json
 import logging
 import re
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -23,19 +25,33 @@ log = logging.getLogger("quipeat.generation")
 
 
 class _JobEventStore(logging.Handler):
-    """Persists job log lines to job_events so admins can read exactly what
-    happened per deck build in the admin panel."""
+    """Buffers job log lines and flushes them to job_events in one batch per
+    chunk — a thorough deck logs ~1000 lines, and per-line INSERT+commit
+    under the global DB lock would serialize against live traffic."""
 
     def __init__(self, job_id: str):
         super().__init__()
         self.job_id = job_id
+        self.buffer: list[tuple[str, str]] = []
         self.setFormatter(logging.Formatter("%(message)s"))
 
     def emit(self, record):
         try:
-            msg = self.format(record)
-            db.execute("INSERT INTO job_events(job_id, level, message) VALUES (?, ?, ?)",
-                       (self.job_id, record.levelname.lower(), msg[:1000]))
+            self.buffer.append((record.levelname.lower(), self.format(record)[:1000]))
+        except Exception:
+            pass
+
+    def flush_batch(self):
+        if not self.buffer:
+            return
+        rows, self.buffer = self.buffer, []
+        try:
+            with db._lock:
+                conn = db.get_conn()
+                conn.executemany(
+                    "INSERT INTO job_events(job_id, level, message) VALUES (?, ?, ?)",
+                    [(self.job_id, lvl, msg) for lvl, msg in rows])
+                conn.commit()
         except Exception:
             pass
 
@@ -234,13 +250,15 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
     against its chunk, dedup, and insert passing ones. Progress is tracked in jobs."""
     job_handler = _attach_job_logger(job_id)
     try:
-        _generate_deck_questions_inner(user_id, deck_id, job_id)
+        _generate_deck_questions_inner(user_id, deck_id, job_id, job_handler)
     finally:
+        job_handler.flush_batch()
         log.removeHandler(job_handler)
         prune_job_events()
 
 
-def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str) -> None:
+def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
+                                   job_handler) -> None:
     job = db.query_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
     deck = db.query_one(
         "SELECT d.*, s.kind AS source_kind, s.original_ref FROM decks d"
@@ -288,14 +306,15 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str) -> N
     chunks = db.query(
         "SELECT * FROM chunks WHERE source_id = ? ORDER BY idx", (deck["source_id"],))
 
-    # Triage, then sample. Score every chunk against the topic (keyword
-    # overlap with the deck title) and prefer the most on-topic chunks, so a
-    # big crawl spends its question budget on substantive pages instead of
-    # evenly across nav/legal/changelog filler. Ties and near-zero scores
-    # keep the original order (even spread across the source).
+    # Triage FIRST, then sample. Cheap keyword scoring picks a candidate pool
+    # (top 2x budget) from all chunks; the LLM then classifies that pool as
+    # learning material or not; the question budget is sampled from the
+    # SURVIVORS — so garbage chunks never consume budget and decks fill
+    # their target even when the crawl grabbed nav/legal/contributor pages.
     needed = max(1, -(-target_questions // questions_per_chunk))
     log.info("[job %s] %s chunks available, budget=%s chunks (target=%s q, %s q/chunk)",
              job_id, len(chunks), needed, target_questions, questions_per_chunk)
+    pool = chunks
     if len(chunks) > needed:
         terms = _topic_terms(goal)
         scored = [(_topic_score(c["text"], terms), i, c) for i, c in enumerate(chunks)]
@@ -305,28 +324,33 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str) -> N
                  min(t[0] for t in scored), max(t[0] for t in scored),
                  sum(t[0] for t in scored) / len(scored))
         best = sorted(scored, key=lambda t: (-t[0], t[1]))[:top]
-        best = sorted(best, key=lambda t: t[1])
-        step = len(best) / needed
-        picked = [best[min(len(best) - 1, int(i * step))][2] for i in range(needed)]
-        seen_idx = set()
-        deduped = []
-        for c in picked:
-            if c["id"] not in seen_idx:
-                seen_idx.add(c["id"])
-                deduped.append(c)
-        chunks = deduped
-        log.info("[job %s] triage: sampled %s chunks from top-%s pool", job_id, len(chunks), top)
+        pool = [t[2] for t in sorted(best, key=lambda t: t[1])]
+        log.info("[job %s] triage: keyword pool = top-%s of %s", job_id, len(pool), len(chunks))
 
     try:
         provider, model = _get_provider(user_id)
         log.info("[job %s] provider=%s model=%s", job_id, provider.name, model)
         db.execute("UPDATE jobs SET status='running', total=?, started_at=datetime('now') WHERE id=?",
                    (len(chunks), job_id))
-        chunks = _semantic_triage(provider, model, goal, chunks, job_id)
-        log.info("[job %s] triage kept %s/%s chunks", job_id, len(chunks),
-                 db.query_one("SELECT COUNT(*) AS n FROM chunks WHERE source_id = ?",
-                              (deck["source_id"],))["n"])
-        db.execute("UPDATE jobs SET total=? WHERE id=?", (len(chunks), job_id))
+        if len(pool) > 1 or pool != chunks:
+            pool = _semantic_triage(provider, model, goal, pool, job_id)
+        log.info("[job %s] semantic triage kept %s/%s pool chunks",
+                 job_id, len(pool), len(chunks))
+        db.execute("UPDATE jobs SET total=? WHERE id=?", (len(pool), job_id))
+
+        chunks = pool
+        if len(chunks) > needed:
+            step = len(chunks) / needed
+            picked = [chunks[min(len(chunks) - 1, int(i * step))] for i in range(needed)]
+            seen_idx = set()
+            deduped = []
+            for c in picked:
+                if c["id"] not in seen_idx:
+                    seen_idx.add(c["id"])
+                    deduped.append(c)
+            chunks = deduped
+            log.info("[job %s] sampled %s chunks from %s survivors",
+                     job_id, len(chunks), len(pool))
         seen_prompts: list[str] = []
         for chunk in chunks:
             log.info("[job %s] chunk %s: drafting (%s words)", job_id, chunk["idx"],
@@ -388,17 +412,17 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str) -> N
                     scores = {i: 0.5 for i in range(len(candidates))}
 
             reached_target = False
+            if not db.query_one("SELECT 1 FROM decks WHERE id = ?", (deck_id,)):
+                log.info("[job %s] deck %s deleted mid-run; stopping", job_id, deck_id)
+                db.execute("UPDATE jobs SET status='done', finished_at=datetime('now'),"
+                           " message='Deck deleted during generation.' WHERE id=?", (job_id,))
+                return
             for i, q in enumerate(candidates):
                 score = scores.get(i, 0.5)
                 if score < MIN_VERIFY_SCORE:
                     log.info("[job %s] chunk %s: rejected by verify (score=%s < %s): %r",
                              job_id, chunk["idx"], score, MIN_VERIFY_SCORE, q.prompt[:80])
                     continue
-                if not db.query_one("SELECT 1 FROM decks WHERE id = ?", (deck_id,)):
-                    log.info("[job %s] deck %s deleted mid-run; stopping", job_id, deck_id)
-                    db.execute("UPDATE jobs SET status='done', finished_at=datetime('now'),"
-                               " message='Deck deleted during generation.' WHERE id=?", (job_id,))
-                    return
                 inserted = db.query_one(
                     "SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))["n"]
                 if inserted >= target_questions:
@@ -417,7 +441,7 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str) -> N
             if reached_target:
                 break
             db.execute("UPDATE jobs SET done=done+1 WHERE id=?", (job_id,))
-            time.sleep(0.05)
+            job_handler.flush_batch()
         inserted = db.query_one("SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))["n"]
         log.info("[job %s] finished: %s questions inserted (target was %s)",
                  job_id, inserted, target_questions)
@@ -438,10 +462,40 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str) -> N
         db.execute("UPDATE decks SET status='failed' WHERE id=?", (deck_id,))
 
 
+_EXECUTOR = None
+_EXECUTOR_LOCK = threading.Lock()
+MAX_CONCURRENT_JOBS = 3
+
+
+def _get_executor() -> concurrent.futures.ThreadPoolExecutor:
+    """Bounded worker pool: deck builds cap at MAX_CONCURRENT_JOBS instead of
+    spawning an unbounded thread per job (10 users x thorough decks would
+    otherwise run 10 browser+LLM pipelines in parallel)."""
+    global _EXECUTOR
+    with _EXECUTOR_LOCK:
+        if _EXECUTOR is None:
+            _EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+                max_workers=MAX_CONCURRENT_JOBS, thread_name_prefix="deckgen")
+        return _EXECUTOR
+
+
+def recover_stuck_jobs() -> None:
+    """Startup recovery: jobs interrupted by a container restart are stuck
+    'running'/'queued' forever. Mark them failed and reset their decks so
+    regen works."""
+    stuck = db.query("SELECT id, deck_id FROM jobs WHERE status IN ('queued', 'running')")
+    for job in stuck:
+        db.execute(
+            "UPDATE jobs SET status='failed',"
+            " error='Interrupted by server restart — regenerate this deck.',"
+            " finished_at=datetime('now') WHERE id = ?", (job["id"],))
+        db.execute("UPDATE decks SET status='draft' WHERE id = ?", (job["deck_id"],))
+    if stuck:
+        log.warning("startup recovery: marked %s interrupted job(s) failed", len(stuck))
+
+
 def start_generation(user_id: int, deck_id: int) -> str:
-    import threading
     job_id = uuid.uuid4().hex
     db.execute("INSERT INTO jobs(id, user_id, deck_id) VALUES (?, ?, ?)", (job_id, user_id, deck_id))
-    t = threading.Thread(target=generate_deck_questions, args=(user_id, deck_id, job_id), daemon=True)
-    t.start()
+    _get_executor().submit(generate_deck_questions, user_id, deck_id, job_id)
     return job_id

@@ -37,8 +37,9 @@ def _startup():
     db.init_db()
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
     from . import diagnostics
-    from .generation import prune_job_events
+    from .generation import prune_job_events, recover_stuck_jobs
     prune_job_events()
+    recover_stuck_jobs()
     results = diagnostics.run_all_checks()
     degraded = [f"{k}: {v['detail']}" for k, v in results.items() if v["status"] != "ok"]
     if degraded:

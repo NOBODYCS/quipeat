@@ -529,7 +529,7 @@ def test_triage_prompt_is_sent_to_lld(monkeypatch):
         client.post("/register", data={"email": "triage@b.c", "password": "password123",
                                        "display_name": "T"}, follow_redirects=False)
         r = client.post("/new", data={"title": "T", "goal": "Use Ansible playbooks",
-                                      "topic_text": "Ansible playbooks run tasks. " * 60},
+                                      "topic_text": "Ansible playbooks run tasks. " * 400},
                         follow_redirects=False)
         assert r.status_code == 303
         deck_id = int(r.headers["location"].split("created=")[1])
@@ -676,3 +676,50 @@ def test_job_events_pruned_and_regenerate_text_deck():
     client.post(f"/decks/{deck_id}/delete", follow_redirects=False)
     leftover = db.query_one("SELECT 1 FROM job_events WHERE job_id = ?", (job["id"],))
     assert leftover is None
+
+
+def test_restart_recovery_and_bounded_concurrency():
+    """Interrupted jobs must be marked failed at startup (decks reset to
+    draft so regen works), and jobs run on a bounded executor."""
+    from app.generation import recover_stuck_jobs, _get_executor, MAX_CONCURRENT_JOBS
+
+    client.post("/register", data={"email": "recover@b.c", "password": "password123",
+                                   "display_name": "RV"}, follow_redirects=False)
+    r = client.post("/new", data={"title": "Stuck", "goal": "Learn recovery",
+                                  "topic_text": "Recovery handles interrupted jobs. " * 60},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    deck_id = int(r.headers["location"].split("created=")[1])
+
+    # simulate a crash mid-run: job left 'running'
+    db.execute("UPDATE jobs SET status='running' WHERE deck_id = ?", (deck_id,))
+    db.execute("UPDATE decks SET status='draft' WHERE id = ?", (deck_id,))
+
+    recover_stuck_jobs()
+    job = db.query_one("SELECT * FROM jobs WHERE deck_id = ? ORDER BY rowid DESC LIMIT 1",
+                       (deck_id,))
+    assert job["status"] == "failed"
+    assert "restart" in job["error"].lower()
+    deck = db.query_one("SELECT status FROM decks WHERE id = ?", (deck_id,))
+    assert deck["status"] == "draft"  # regen is possible again
+
+    # bounded executor: single shared pool with capped workers
+    ex = _get_executor()
+    assert ex._max_workers == MAX_CONCURRENT_JOBS
+    assert _get_executor() is ex  # reused, not per-call
+
+    # after recovery, regen works on the reset deck
+    r = client.post(f"/decks/{deck_id}/regen", follow_redirects=False)
+    assert r.status_code == 303
+    import time
+    for _ in range(60):
+        unfinished = db.query(
+            "SELECT * FROM jobs WHERE deck_id = ? AND status IN ('queued','running')", (deck_id,))
+        if not unfinished:
+            break
+        time.sleep(0.2)
+    job2 = db.query_one("SELECT * FROM jobs WHERE deck_id = ? ORDER BY rowid DESC LIMIT 1",
+                        (deck_id,))
+    assert job2["status"] == "done", job2["error"]
+    qs = db.query_one("SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))
+    assert qs["n"] > 0
