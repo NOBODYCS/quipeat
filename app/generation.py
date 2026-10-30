@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from . import db
-from .config import settings
+from .config import DEFAULT_LEVEL, LEVELS, settings
 from .llm.mock import MockProvider
 from .llm.providers import make_provider
 from .llm.structured import structured_call
@@ -15,7 +15,6 @@ from .security import decrypt_secret
 from .i18n import translate
 
 PROMPT_VERSION = "v1"
-QUESTIONS_PER_CHUNK = 2
 MIN_VERIFY_SCORE = 0.7
 
 _PROMPTS = {
@@ -110,6 +109,10 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
     job = db.query_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
     deck = db.query_one("SELECT * FROM decks WHERE id = ?", (deck_id,))
     gen_lang = deck["lang"] if "lang" in deck.keys() and deck["lang"] in LANG_NAMES else "en"
+    level = deck["level"] if "level" in deck.keys() and deck["level"] in LEVELS else DEFAULT_LEVEL
+    cfg = LEVELS[level]
+    questions_per_chunk = cfg["questions_per_chunk"]
+    max_questions = cfg["max_questions"]
     chunks = db.query(
         "SELECT * FROM chunks WHERE source_id = ? ORDER BY idx", (deck["source_id"],))
     try:
@@ -120,8 +123,8 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
         for chunk in chunks:
             user_msg = (
                 f"Source text:\n\"\"\"\n{chunk['text']}\n\"\"\"\n\n"
-                f"Generate {QUESTIONS_PER_CHUNK} multiple-choice questions from the source text above."
-                + _lang_instruction(gen_lang)
+                f"Generate {questions_per_chunk} multiple-choice questions from the source text above."
+                + cfg["difficulty_hint"] + _lang_instruction(gen_lang)
             )
             try:
                 drafts, _ = structured_call(provider, model, _system_prompt("generate"),
@@ -150,6 +153,12 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
                     score = 0.5
                 if score < MIN_VERIFY_SCORE:
                     continue
+                inserted = db.query_one(
+                    "SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))["n"]
+                if inserted >= max_questions:
+                    db.execute("UPDATE jobs SET done=done+1, message=? WHERE id=?",
+                               (f"Question cap reached ({max_questions}); skipping remaining chunks.", job_id))
+                    break
                 db.execute(
                     "INSERT INTO questions(deck_id, chunk_id, prompt, options_json, correct_index,"
                     " explanation, difficulty, model, prompt_version, verify_score)"

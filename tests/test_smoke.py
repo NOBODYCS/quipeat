@@ -92,3 +92,62 @@ def test_password_manager_friendly_login_form():
     assert 'autocomplete="username"' in r.text
     assert 'autocomplete="current-password"' in r.text
     assert 'name="email"' in r.text and 'name="password"' in r.text
+
+
+def test_levels_config():
+    from app.config import LEVELS, DEFAULT_LEVEL
+    assert DEFAULT_LEVEL in LEVELS
+    for cfg in LEVELS.values():
+        assert cfg["questions_per_chunk"] >= 1
+        assert cfg["max_questions"] >= cfg["questions_per_chunk"]
+        assert cfg["max_pages"] >= 1
+        assert cfg["difficulty_hint"]
+
+
+def test_challenge_page_detected():
+    from app.ingest import _looks_like_challenge, IngestError, extract_text_from_url
+
+    assert _looks_like_challenge("<html><body>Enable JavaScript and cookies to continue</body>")
+    assert not _looks_like_challenge("<html><body>Ansible is an automation tool " + "x " * 300 + "</body>")
+
+
+def test_url_challenge_raises(monkeypatch):
+    from app import ingest
+
+    def fake_fetch(url):
+        return "<html><title>Just a moment...</title><body>Enable JavaScript and cookies to continue</body></html>"
+
+    monkeypatch.setattr(ingest, "_fetch", fake_fetch)
+    try:
+        ingest.extract_text_from_url("https://example.com/")
+        raise AssertionError("expected IngestError")
+    except ingest.IngestError as e:
+        assert str(e) == "__err_challenge"
+
+
+def test_url_crawl_concatenates_pages(monkeypatch):
+    from app import ingest
+
+    page = ("<html><body>" + ("Ansible module content. " * 50) +
+            '<a href="/page2">two</a></body></html>')
+    page2 = "<html><body>" + ("Second page content. " * 50) + "</body></html>"
+
+    def fake_fetch(url):
+        return page if "page2" not in url else page2
+
+    monkeypatch.setattr(ingest, "_fetch", fake_fetch)
+    text = ingest.extract_text_from_url("https://example.com/", max_pages=5)
+    assert "Ansible module content" in text
+    assert "Second page content" in text
+
+
+def test_new_source_saves_level():
+    r = client.post("/new", data={"title": "Lv", "topic_text": "Kubernetes orchestrates containers. " * 60,
+                                  "level": "thorough"}, follow_redirects=False)
+    assert r.status_code == 303
+    deck_id = int(r.headers["location"].split("/decks/")[1].split("?")[0])
+    deck = db.query_one("SELECT * FROM decks WHERE id = ?", (deck_id,))
+    assert deck["level"] == "thorough"
+
+    r = client.get(f"/decks/{deck_id}/job-status")
+    assert r.status_code == 200

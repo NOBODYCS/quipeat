@@ -1,12 +1,27 @@
 import re
+from collections import deque
 from pathlib import Path
+from urllib.parse import urljoin, urldefrag, urlsplit
 
 import httpx
 from pypdf import PdfReader
 from docx import Document as DocxDocument
 
+from .config import settings
+
 CHUNK_TOKENS = 450
 OVERLAP_TOKENS = 60
+
+_HEADERS = {"User-Agent": "QuipeatBot/1.0"}
+_CHALLENGE_PATTERNS = (
+    "enable javascript",
+    "enable js and cookies",
+    "checking your browser",
+    "verify you are human",
+    "just a moment",
+    "attention required",
+    "access denied",
+)
 
 
 class IngestError(Exception):
@@ -24,30 +39,109 @@ def extract_text_from_file(path: Path, filename: str) -> str:
             return "\n\n".join(p.text for p in doc.paragraphs)
         if suffix in (".txt", ".md", ".markdown", ".csv"):
             return path.read_text(encoding="utf-8", errors="replace")
-    except Exception as e:
+    except Exception:
         raise IngestError("__err_parse")
     raise IngestError("__err_unsupported")
 
 
-def extract_text_from_url(url: str) -> str:
+def _looks_like_challenge(html: str) -> bool:
+    lowered = html[:20000].lower()
+    return any(p in lowered for p in _CHALLENGE_PATTERNS)
+
+
+def _extract_page(html: str) -> str:
+    import trafilatura
+    text = trafilatura.extract(html) or ""
+    if len(text) < 200:
+        text = re.sub(r"<[^>]+>", " ", html)
+        text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def _fetch(url: str) -> str:
+    with httpx.Client(timeout=30, follow_redirects=True, headers=_HEADERS) as client:
+        resp = client.get(url)
+    if _looks_like_challenge(resp.text):
+        raise IngestError("__err_challenge")
+    resp.raise_for_status()
+    return resp.text
+
+
+def _extract_links(html: str, base_url: str, host: str) -> list[str]:
+    links, seen = [], set()
+    for href in re.findall(r'<a\b[^>]*?href\s*=\s*["\']([^"\'#]+)["\']', html, re.I):
+        if href.startswith(("mailto:", "javascript:", "tel:", "data:")):
+            continue
+        url = urljoin(base_url, href)
+        url, _ = urldefrag(url)
+        parts = urlsplit(url)
+        if parts.scheme not in ("http", "https") or parts.netloc != host:
+            continue
+        if parts.path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".svg", ".pdf",
+                                         ".zip", ".tar.gz", ".tgz", ".xml", ".css", ".js")):
+            continue
+        if url not in seen:
+            seen.add(url)
+            links.append(url)
+    return links
+
+
+def extract_text_from_url(url: str, max_pages: int = 1) -> str:
+    """Fetch a URL and extract its text. With max_pages > 1, crawl same-domain
+    pages breadth-first up to the budget and concatenate their texts.
+
+    Raises IngestError with a specific key when the page is blocked or empty,
+    so the UI can show a clear message instead of building a garbage deck."""
     try:
-        import trafilatura
-        with httpx.Client(timeout=30, follow_redirects=True,
-                          headers={"User-Agent": "QuipeatBot/1.0"}) as client:
-            resp = client.get(url)
-        resp.raise_for_status()
-        downloaded = resp.text
-        text = trafilatura.extract(downloaded) or ""
-        if len(text) < 200:
-            text = re.sub(r"<[^>]+>", " ", downloaded)
-            text = re.sub(r"\s+", " ", text)
-        if len(text) < 200:
-            raise IngestError("__err_extract")
-        return text
+        host = urlsplit(url).netloc
+        first_html = _fetch(url)
     except IngestError:
         raise
-    except Exception as e:
+    except Exception:
         raise IngestError("__err_fetch")
+
+    if _looks_like_challenge(first_html):
+        raise IngestError("__err_challenge")
+
+    texts: list[str] = []
+    try:
+        first_text = _extract_page(first_html)
+    except Exception:
+        raise IngestError("__err_extract")
+    if len(first_text) < 200:
+        raise IngestError("__err_extract")
+    texts.append(first_text)
+
+    if max_pages <= 1:
+        return first_text
+
+    pages_fetched = 1
+    queue = deque(_extract_links(first_html, url, host))
+    visited = {url}
+    while queue and pages_fetched < max_pages:
+        next_url = queue.popleft()
+        if next_url in visited:
+            continue
+        visited.add(next_url)
+        try:
+            html = _fetch(next_url)
+        except Exception:
+            continue
+        if _looks_like_challenge(html):
+            continue
+        pages_fetched += 1
+        try:
+            text = _extract_page(html)
+        except Exception:
+            continue
+        if len(text) >= 200:
+            texts.append(text)
+        for link in _extract_links(html, next_url, host):
+            if link not in visited and len(visited) < max_pages * 4:
+                queue.append(link)
+    if not texts:
+        raise IngestError("__err_extract")
+    return "\n\n".join(texts)
 
 
 def _tokens(text: str) -> list[str]:
