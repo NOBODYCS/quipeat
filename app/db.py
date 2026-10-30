@@ -39,6 +39,9 @@ def init_db() -> None:
         qcols = {r["name"] for r in conn.execute("PRAGMA table_info(questions)").fetchall()}
         if "flagged" not in qcols:
             conn.execute("ALTER TABLE questions ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0")
+        dcols = {r["name"] for r in conn.execute("PRAGMA table_info(decks)").fetchall()}
+        if "lang" not in dcols:
+            conn.execute("ALTER TABLE decks ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'")
         conn.commit()
         _ensure_admin(conn)
         conn.commit()
