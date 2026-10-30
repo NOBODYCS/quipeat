@@ -2,7 +2,7 @@
      class="card mb-6 p-4">
   <div class="flex justify-between text-sm mb-2">
     <span class="font-semibold">{% if job.status == 'running' %}⚡ {{ t("gen_running") }}{% elif job.status == 'queued' %}{{ t("gen_queued") }}{% elif job.status == 'done' %}✅ {{ t("gen_done") }}{% else %}❌ {{ t("gen_failed") }}{% endif %}</span>
-    <span class="text-mist-400 tabular-nums">{{ job.done }}/{{ job.total }} {{ t("job_chunks") }} · {{ t("est_time") }}{{ job.total * 2 }} {{ t("gen_est") }}</span>
+    <span class="text-mist-400 tabular-nums">{{ job.done }}/{{ job.total }} {{ t("job_chunks") }} · {{ t("est_time") }}{{ expected_q }} {{ t("gen_est") }}</span>
   </div>
   <div class="h-2.5 rounded-full bg-ink-700 overflow-hidden">
     <div class="h-full rounded-full bg-volt-400 transition-all" style="width:{% if job.total %}{{ (job.done / job.total * 100) | round }}{% else %}0{% endif %}%"></div>

@@ -9,8 +9,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import db, gamify
-from .config import settings
 from .fsrs import grade, xp_for
+from .config import DEFAULT_LEVEL, LEVELS, settings
 from .i18n import LANGS, STRINGS, translate
 from .generation import start_generation
 from .ingest import chunk_text, extract_text_from_file, extract_text_from_url, IngestError
@@ -78,6 +78,8 @@ def page(request: Request, template: str, **ctx) -> HTMLResponse:
     ctx.setdefault("passkeys_enabled", settings.passkeys_enabled)
     ctx.setdefault("lang", lang)
     ctx.setdefault("langs", LANGS)
+    ctx.setdefault("levels", LEVELS)
+    ctx.setdefault("default_level", DEFAULT_LEVEL)
     ctx.setdefault("t", lambda k: translate(lang, k))
     if user:
         from .fsrs import level_progress
@@ -207,6 +209,20 @@ async def logout(request: Request):
 
 # ---------- decks & sources ----------
 
+def _expected_questions(deck_id: int) -> int:
+    """Honest estimate for the job bar: the level target, capped by what the
+    source's chunks can actually yield (target for URL decks still crawling)."""
+    deck = db.query_one("SELECT source_id, level FROM decks WHERE id = ?", (deck_id,))
+    if not deck:
+        return 0
+    level = deck["level"] if deck["level"] in LEVELS else DEFAULT_LEVEL
+    cfg = LEVELS[level]
+    n_chunks = db.query_one("SELECT COUNT(*) AS n FROM chunks WHERE source_id = ?",
+                            (deck["source_id"],))["n"]
+    if n_chunks:
+        return min(cfg["target_questions"], n_chunks * cfg["questions_per_chunk"])
+    return cfg["target_questions"]
+
 @app.get("/decks", response_class=HTMLResponse)
 async def decks(request: Request, created: int | None = None):
     user = require_user(request)
@@ -227,6 +243,7 @@ async def new_source_form(request: Request):
 @app.post("/new")
 async def new_source(request: Request, title: str = Form(...), url: str = Form(""),
                      topic_text: str = Form(""), lang: str = Form("en"),
+                     level: str = Form(DEFAULT_LEVEL),
                      file: UploadFile | None = File(None)):
     user = require_user(request)
     title = title.strip()
@@ -234,6 +251,8 @@ async def new_source(request: Request, title: str = Form(...), url: str = Form("
     topic_text = topic_text.strip()
     if lang not in LANGS:
         lang = user["lang"] if user["lang"] in LANGS else "en"
+    if level not in LEVELS:
+        level = DEFAULT_LEVEL
     try:
         if file and file.filename:
             data = await file.read()
@@ -245,7 +264,7 @@ async def new_source(request: Request, title: str = Form(...), url: str = Form("
             kind, ref = "file", file.filename
             tmp.unlink(missing_ok=True)
         elif url:
-            raw = extract_text_from_url(url)
+            raw = ""
             kind, ref = "url", url
         elif topic_text:
             raw = topic_text
@@ -259,7 +278,7 @@ async def new_source(request: Request, title: str = Form(...), url: str = Form("
         else:
             key = "err_generic"
         return page(request, "new_source.html", error=translate(lang_of(request, user), key))
-    if not raw.strip():
+    if kind != "url" and not raw.strip():
         return page(request, "new_source.html", error=translate(lang_of(request, user), "err_no_text"))
     if not title:
         title = (ref or "Untitled")[:80]
@@ -268,8 +287,8 @@ async def new_source(request: Request, title: str = Form(...), url: str = Form("
     source_id = cur.lastrowid
     for idx, piece in enumerate(chunk_text(raw)):
         db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)", (source_id, idx, piece))
-    cur = db.execute("INSERT INTO decks(user_id, source_id, title, lang) VALUES (?, ?, ?, ?)",
-                     (user["id"], source_id, title, lang))
+    cur = db.execute("INSERT INTO decks(user_id, source_id, title, lang, level) VALUES (?, ?, ?, ?, ?)",
+                     (user["id"], source_id, title, lang, level))
     deck_id = cur.lastrowid
     job_id = start_generation(user["id"], deck_id)
     return RedirectResponse(f"/decks?created={deck_id}", status_code=303)
@@ -287,7 +306,8 @@ async def deck_detail(request: Request, deck_id: int, job: str | None = None):
     if not deck:
         return RedirectResponse("/decks", status_code=303)
     job_row = db.query_one("SELECT * FROM jobs WHERE id = ? AND user_id = ?", (job, user["id"])) if job else None
-    return page(request, "deck_detail.html", deck=deck, job=job_row)
+    return page(request, "deck_detail.html", deck=deck, job=job_row,
+                expected_q=_expected_questions(deck_id))
 
 
 @app.get("/decks/{deck_id}/job-status", response_class=HTMLResponse)
@@ -298,7 +318,8 @@ async def job_status(request: Request, deck_id: int):
         (deck_id, user["id"]))
     if not job:
         return HTMLResponse("")
-    return page(request, "_job_status.html", job=job, deck_id=deck_id)
+    return page(request, "_job_status.html", job=job, deck_id=deck_id,
+                expected_q=_expected_questions(deck_id))
 
 
 @app.get("/decks/{deck_id}/questions", response_class=HTMLResponse)

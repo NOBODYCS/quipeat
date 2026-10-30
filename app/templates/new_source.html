@@ -37,6 +37,15 @@
         <option value="pl" {% if lang == "pl" %}selected{% endif %}>🇵🇱 Polski</option>
       </select>
     </div>
+    <div>
+      <label for="level" class="label">{{ t("level_label") }}</label>
+      <select id="level" name="level" class="input">
+        <option value="quick">{{ t("level_quick") }}</option>
+        <option value="standard" selected>{{ t("level_standard") }}</option>
+        <option value="thorough">{{ t("level_thorough") }}</option>
+      </select>
+      <p class="mt-1 text-xs text-mist-400">{{ t("level_hint") }}</p>
+    </div>
     <button type="submit" class="btn-primary w-full">{{ t("generate_btn") }}</button>
   </form>
 </div>
