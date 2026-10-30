@@ -6,27 +6,27 @@
     <div class="mb-6 flex items-center gap-3">
       <span class="grid h-10 w-10 place-items-center rounded-2xl bg-volt-400 text-xl font-extrabold text-ink-950 shadow-btn">Q</span>
       <div>
-        <h1 class="text-xl font-extrabold">Create account</h1>
-        <p class="text-xs text-slate-400">Start building quiz decks.</p>
+        <h1 class="text-xl font-extrabold">{{ t("register_title") }}</h1>
+        <p class="text-xs text-slate-400">{{ t("register_sub") }}</p>
       </div>
     </div>
     {% if error %}<div class="alert-error">{{ error }}</div>{% endif %}
     <form method="post" action="/register" class="space-y-4">
       <div>
-        <label for="display_name" class="label">Display name (optional)</label>
+        <label for="display_name" class="label">{{ t("display_name") }}</label>
         <input id="display_name" name="display_name" type="text" autocomplete="nickname" class="input">
       </div>
       <div>
-        <label for="email" class="label">Email</label>
+        <label for="email" class="label">{{ t("email") }}</label>
         <input id="email" name="email" type="email" autocomplete="username" required class="input">
       </div>
       <div>
-        <label for="password" class="label">Password (min 8 chars)</label>
+        <label for="password" class="label">{{ t("password_min") }}</label>
         <input id="password" name="password" type="password" autocomplete="new-password" required minlength="8" class="input">
       </div>
-      <button type="submit" class="btn-primary w-full">Create account</button>
+      <button type="submit" class="btn-primary w-full">{{ t("create_account") }}</button>
     </form>
-    <p class="mt-4 text-sm text-slate-400 text-center">Already have an account? <a href="/login" class="text-volt-300 font-semibold hover:underline">Sign in</a></p>
+    <p class="mt-4 text-sm text-slate-400 text-center">{{ t("have_account") }} <a href="/login" class="text-volt-300 font-semibold hover:underline">{{ t("signin") }}</a></p>
   </div>
 </div>
 {% endblock %}

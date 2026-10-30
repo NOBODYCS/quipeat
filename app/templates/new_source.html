@@ -2,29 +2,36 @@
 {% block title %}New source · Quipeat{% endblock %}
 {% block content %}
 <div class="mx-auto max-w-xl">
-  <h1 class="text-2xl font-extrabold mb-6">Create a quiz deck</h1>
+  <h1 class="text-2xl font-extrabold mb-6">{{ t("new_title") }}</h1>
   {% if error %}<div class="alert-error">{{ error }}</div>{% endif %}
   <form method="post" action="/new" enctype="multipart/form-data" class="card p-5 space-y-5">
     <div>
-      <label for="title" class="label">Deck title</label>
-      <input id="title" name="title" type="text" placeholder="e.g. Photosynthesis basics" class="input">
+      <label for="title" class="label">{{ t("deck_title_label") }}</label>
+      <input id="title" name="title" type="text" placeholder="{{ t("deck_title_ph") }}" class="input">
     </div>
     <div>
-      <label for="file" class="label">Upload a document (PDF, DOCX, TXT, MD)</label>
+      <label for="file" class="label">{{ t("upload_label") }}</label>
       <input id="file" name="file" type="file" accept=".pdf,.docx,.txt,.md,.markdown,.csv"
              class="w-full text-sm text-slate-400 file:mr-3 file:btn-ghost file:!min-h-0 file:!py-1.5 file:text-xs">
     </div>
-    <div class="text-center text-xs font-semibold text-slate-500 tracking-widest">— OR —</div>
+    <div class="text-center text-xs font-semibold text-slate-500 tracking-widest">— {{ t("or") }} —</div>
     <div>
-      <label for="url" class="label">Link to an online article</label>
+      <label for="url" class="label">{{ t("url_label") }}</label>
       <input id="url" name="url" type="url" placeholder="https://…" class="input">
     </div>
-    <div class="text-center text-xs font-semibold text-slate-500 tracking-widest">— OR —</div>
+    <div class="text-center text-xs font-semibold text-slate-500 tracking-widest">— {{ t("or") }} —</div>
     <div>
-      <label for="topic_text" class="label">Paste text or describe the topic</label>
-      <textarea id="topic_text" name="topic_text" rows="6" placeholder="Paste any material about the topic…" class="input"></textarea>
+      <label for="topic_text" class="label">{{ t("text_label") }}</label>
+      <textarea id="topic_text" name="topic_text" rows="6" placeholder="{{ t("text_ph") }}" class="input"></textarea>
     </div>
-    <button type="submit" class="btn-primary w-full">Generate my quiz</button>
+    <div>
+      <label for="lang" class="label">{{ t("lang_label") }}</label>
+      <select id="lang" name="lang" class="input">
+        <option value="en" {% if lang == "en" %}selected{% endif %}>🇬🇧 English</option>
+        <option value="pl" {% if lang == "pl" %}selected{% endif %}>🇵🇱 Polski</option>
+      </select>
+    </div>
+    <button type="submit" class="btn-primary w-full">{{ t("generate_btn") }}</button>
   </form>
 </div>
 {% endblock %}

@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     rp_name: str = "Quipeat"
     llm_mock: bool = False
     max_upload_mb: int = 25
+    # Server-side key for the built-in Mistral provider (admin/privileged only).
+    mistral_api_key: str = ""
+    builtin_model: str = "mistral-large-latest"
+    # Email OR display name of the user who should be admin (matched case-insensitively).
+    admin_ident: str = ""
 
 
 settings = Settings()

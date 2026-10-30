@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full">
+<html lang="{{ lang }}" class="h-full">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -20,17 +20,24 @@
         <span class="text-lg font-extrabold tracking-tight text-white">Quipeat</span>
       </a>
       <nav class="hidden md:flex items-center gap-1 ml-4">
-        <a href="/decks" class="navlink">Decks</a>
-        <a href="/new" class="navlink">New</a>
-        <a href="/study" class="navlink">Study</a>
-        <a href="/stats" class="navlink">Stats</a>
+        <a href="/decks" class="navlink">{{ t("nav_decks") }}</a>
+        <a href="/new" class="navlink">{{ t("nav_new") }}</a>
+        <a href="/study" class="navlink">{{ t("nav_study") }}</a>
+        <a href="/stats" class="navlink">{{ t("nav_stats") }}</a>
+        {% if user.role == 'admin' %}<a href="/admin" class="navlink">{{ t("nav_admin") }}</a>{% endif %}
       </nav>
       <div class="ml-auto flex items-center gap-2">
+        {% if user.role == 'admin' %}<span class="chip chip-volt hidden sm:inline-flex">admin</span>{% endif %}
         <span class="chip hidden sm:inline-flex">Lvl {{ user.level }}</span>
         <span class="chip chip-volt hidden sm:inline-flex">{{ user.xp_total }} XP{% if user.streak_days > 0 %} · 🔥{{ user.streak_days }}{% endif %}</span>
-        <a href="/onboarding?replay=1" class="navlink !px-2.5 hidden sm:block" title="Replay tutorial">❓</a>
-        <a href="/settings" class="navlink !px-2.5">⚙</a>
-        <form method="post" action="/logout"><button class="navlink !text-slate-400">Log out</button></form>
+        <a href="/onboarding?replay=1" class="navlink !px-2.5 hidden sm:block" title="{{ t("replay_tutorial") }}">❓</a>
+        <a href="/settings" class="navlink !px-2.5" title="{{ t("nav_settings") }}">⚙</a>
+        <form method="post" action="/settings/lang" class="flex items-center">
+          <select name="lang" onchange="this.form.submit()" class="bg-ink-800 border border-ink-600 rounded-lg text-xs font-semibold text-slate-300 px-1.5 py-1.5" title="{{ t("site_language") }}">
+            {% for l in langs %}<option value="{{ l }}" {% if l == lang %}selected{% endif %}>{% if l == "en" %}🇬🇧 EN{% else %}🇵🇱 PL{% endif %}</option>{% endfor %}
+          </select>
+        </form>
+        <form method="post" action="/logout"><button class="navlink !text-slate-400">{{ t("nav_logout") }}</button></form>
       </div>
     </div>
   </header>
@@ -41,10 +48,10 @@
   {% if user %}
   <nav class="fixed bottom-0 inset-x-0 z-20 border-t border-ink-700 bg-ink-900/95 backdrop-blur md:hidden">
     <div class="mx-auto max-w-5xl grid grid-cols-4">
-      <a href="/decks" class="tablink {% if request.url.path.startswith('/decks') %}tablink-active{% endif %}"><span>🗂</span>Decks</a>
-      <a href="/new" class="tablink {% if request.url.path == '/new' %}tablink-active{% endif %}"><span>＋</span>New</a>
-      <a href="/study" class="tablink {% if request.url.path.startswith('/study') %}tablink-active{% endif %}"><span>🎯</span>Study</a>
-      <a href="/stats" class="tablink {% if request.url.path == '/stats' %}tablink-active{% endif %}"><span>📊</span>Stats</a>
+      <a href="/decks" class="tablink {% if request.url.path.startswith('/decks') %}tablink-active{% endif %}"><span>🗂</span>{{ t("nav_decks") }}</a>
+      <a href="/new" class="tablink {% if request.url.path == '/new' %}tablink-active{% endif %}"><span>＋</span>{{ t("nav_new") }}</a>
+      <a href="/study" class="tablink {% if request.url.path.startswith('/study') %}tablink-active{% endif %}"><span>🎯</span>{{ t("nav_study") }}</a>
+      <a href="/stats" class="tablink {% if request.url.path == '/stats' %}tablink-active{% endif %}"><span>📊</span>{{ t("nav_stats") }}</a>
     </div>
   </nav>
   {% endif %}

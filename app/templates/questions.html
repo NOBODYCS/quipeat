@@ -3,7 +3,7 @@
 {% block content %}
 <div class="mb-6">
   <a href="/decks/{{ deck.id }}" class="text-sm text-slate-400 hover:text-volt-300">← {{ deck.title }}</a>
-  <h1 class="text-2xl font-extrabold mt-1">Questions ({{ questions | length }})</h1>
+  <h1 class="text-2xl font-extrabold mt-1">{{ t("questions_title") }} ({{ questions | length }})</h1>
 </div>
 <div class="space-y-4">
   {% for q in questions %}

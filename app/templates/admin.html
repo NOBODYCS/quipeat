@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Admin · Quipeat{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-extrabold mb-6">{{ t("admin_title") }}</h1>
+{% if msg %}<div class="alert-ok">{{ msg }}</div>{% endif %}
+{% if error %}<div class="alert-error">{{ error }}</div>{% endif %}
+<div class="card p-5 overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-left text-slate-400 border-b border-ink-700">
+        <th class="pb-2 pr-4 font-semibold">{{ t("user") }}</th>
+        <th class="pb-2 pr-4 font-semibold">{{ t("role") }}</th>
+        <th class="pb-2 pr-4 font-semibold">{{ t("joined") }}</th>
+        <th class="pb-2 font-semibold">{{ t("change_role") }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr class="border-b border-ink-800 last:border-0">
+        <td class="py-3 pr-4">
+          <div class="font-semibold text-white">{{ u.display_name or u.email }}</div>
+          <div class="text-xs text-slate-500">{{ u.email }}</div>
+        </td>
+        <td class="py-3 pr-4">
+          {% if u.role == 'admin' %}<span class="chip chip-volt">admin</span>
+          {% elif u.role == 'privileged' %}<span class="chip" style="border-color:rgba(167,139,250,.5);background:rgba(167,139,250,.12);color:#c4b5fd">privileged</span>
+          {% else %}<span class="chip">member</span>{% endif %}
+        </td>
+        <td class="py-3 pr-4 text-slate-400 text-xs">{{ u.created_at[:10] }}</td>
+        <td class="py-3">
+          <form method="post" action="/admin/users/{{ u.id }}/role" class="flex gap-2">
+            <select name="role" class="input !w-auto !min-h-0 !py-1.5 text-xs">
+              {% for r in ('member', 'privileged', 'admin') %}
+              <option value="{{ r }}" {% if u.role == r %}selected{% endif %}>{{ r }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn-ghost !min-h-0 !py-1.5 !px-3 text-xs">{{ t("set") }}</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="mt-4 text-xs text-slate-500">{{ t("admin_note") }}</p>
+{% endblock %}

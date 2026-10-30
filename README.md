@@ -1,87 +1,54 @@
 # Quipeat
 
-Learn by repetition: feed it a document, link, or topic and it drafts a large
-bank of multiple-choice questions with an LLM, then drills you with spaced
-repetition and gamification (XP, levels, streaks, badges).
+Turn any document, link, or topic into a quiz deck, then drill it with spaced
+repetition. Gamification: XP, levels, streaks, badges. English and Polish UI;
+quiz language is chosen per deck and passed to the LLM.
 
-## Run (LAN only)
-
-Prebuilt image (built and pushed to GHCR automatically on merge to `main` by
-`.github/workflows/docker-ghcr.yml`):
+## Run
 
 ```bash
-cp .env.example .env   # then edit SECRET_KEY and MASTER_KEY
-# generate both keys:
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-# in docker-compose.yml: comment `build: .`, uncomment `image: ghcr.io/nobodycs/quipeat:latest`
-docker compose up -d
+cp .env.example .env        # fill SECRET_KEY and MASTER_KEY (see below)
+docker compose up -d --build
 ```
 
-Or build from source instead: keep `build: .` and run `docker compose up -d --build`.
+Prebuilt image on GHCR (built on merge to `main`): swap `build: .` for
+`image: ghcr.io/nobodycs/quipeat:latest` in `docker-compose.yml`.
 
-The container always listens on **8000 internally**. To use a different *host* port
-(e.g. an obscure one for nginx), set in `.env`:
+The container listens on 8000 internally. The host port is set with
+`QUIPEAT_LAN_BIND` (default `127.0.0.1:37411:8000`), e.g. point your reverse
+proxy at host port 37411.
 
+### Required env
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"                      # SECRET_KEY
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"  # MASTER_KEY
 ```
-QUIPEAT_LAN_BIND=127.0.0.1:37411:8000
-```
 
-→ app reachable on the Docker host at `http://127.0.0.1:37411` by default (obscure outside port; container stays on 8000) (or `QUIPEAT_LAN_BIND=0.0.0.0:41773:8000`
-for LAN). nginx then proxies `your.name` → `http://<docker-host>:37411`.
+Optional: `ADMIN_IDENT` (email or display name of the admin user),
+`MISTRAL_API_KEY` + `BUILTIN_MODEL` (built-in LLM for admin/privileged users),
+`PASSKEYS_ENABLED=true` + `RP_ID` when serving over HTTPS to enable passkeys,
+`LLM_MOCK=true` for a keyless mock LLM (dev/tests).
 
-In Portainer: create a stack from the repo (branch `main`, path `docker-compose.yml`)
-and set the env vars in the stack's environment section; or paste a compose file with
-`image: ghcr.io/nobodycs/quipeat:latest`.
+## Use
 
-No part of this is meant to be exposed to the internet. Access it from PC/phone
-over your WireGuard network. If you later go public: serve via HTTPS (Caddy with
-Let's Encrypt), close registration (`ALLOW_REGISTRATION=false` when added), and
-set `PASSKEYS_ENABLED=true`.
+Register → (first time: short tutorial) → Settings: connect an LLM key
+(OpenRouter or Mistral; encrypted at rest) or, if privileged, use the built-in
+one → New: upload PDF/DOCX/TXT/MD, paste a URL, or paste text, pick the quiz
+language → questions generate in the background → Study.
 
-## Using it
+Language switch (🇬🇧/🇵🇱) is in the top header.
 
-1. Register (email + password; the form uses standard `autocomplete` attributes
-   so password managers offer to save/fill it).
-2. Settings → paste an **OpenRouter** key (one key, any model — pick from the
-   dropdown or enter any model id) or a **Mistral Studio** key. Keys are stored
-   encrypted at rest (Fernet, `MASTER_KEY`).
-3. New source → upload PDF/DOCX/TXT/MD, paste a URL, or paste raw text.
-4. Questions generate in the background (progress bar); then Study.
+## How question quality stays consistent across models
 
-## Question generation quality (how it stays consistent across models)
-
-- **Contract at the API boundary**: every LLM call requests strict JSON Schema
-  output (`response_format: json_schema`); responses are parsed and validated
-  with pydantic; on failure the validation error is fed back and the call is
-  retried (up to 3×). Weak models still converge.
-- **Grounded drafting**: sources are chunked (~450 tokens, 60 overlap) and the
-  generator may only ask what the attached chunk supports.
-- **Critic pass**: a second call re-checks each question against its chunk
-  (supported? unambiguous? plausible distractors?) and drops anything below
-  a score threshold — this is what prevents hallucinated answers.
-- **Dedup** by token-set similarity of prompts.
-- **Versioned prompts**: `app/prompts/generate_v1.md`, `verify_v1.md`. Every
-  question row records `model` and `prompt_version`, so you can compare models
-  or regenerate decks after a prompt bump.
-- **Eval harness**: `python scripts/eval_generation.py` runs sample docs through
-  the pipeline (mock or real model) and reports counts/scores per model.
+- Strict JSON Schema on every LLM call + pydantic validation + retry-with-error.
+- Sources are chunked; questions must be answerable from the attached chunk.
+- A critic pass re-checks each question against its chunk; weak ones are dropped.
+- Dedup, versioned prompts in `app/prompts/`, and `model` + `prompt_version`
+  stored on every question.
+- Eval harness: `LLM_MOCK=true python scripts/eval_generation.py`
 
 ## Stack
 
-FastAPI + SQLite (WAL) + Jinja2 templates + htmx + Tailwind (compiled at Docker
-build). Background generation via in-process threads with a `jobs` progress
-table. FSRS-inspired scheduling (`app/fsrs.py`).
-
-## Dev
-
-```bash
-python -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
-npm install && npm run build:css   # only needed when templates change
-cp .env.example .env && LLM_MOCK=true uvicorn app.main:app --port 8000
-pytest -q                          # smoke tests (mock LLM)
-```
-
-`LLM_MOCK=true` runs a deterministic mock LLM so the whole flow works without
-any API key (used by tests).
+FastAPI + SQLite (WAL), Jinja2 + htmx + Tailwind, background threads for
+generation, FSRS-inspired scheduling. Tests: `pytest -q`.

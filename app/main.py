@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from . import db, gamify
 from .config import settings
 from .fsrs import grade, xp_for
+from .i18n import LANGS, STRINGS, translate
 from .generation import start_generation
 from .ingest import chunk_text, extract_text_from_file, extract_text_from_url, IngestError
 from .llm.providers import DEFAULT_MODELS
@@ -28,6 +29,12 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), na
 def _startup():
     db.init_db()
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
+
+
+def lang_of(user) -> str:
+    if user and "lang" in user.keys() and user["lang"] in LANGS:
+        return user["lang"]
+    return "en"
 
 
 def current_user(request: Request):
@@ -52,9 +59,16 @@ async def _redirect_handler(request: Request, exc: _Redirect):
 
 
 def page(request: Request, template: str, **ctx) -> HTMLResponse:
+    user = current_user(request)
+    lang = (user["lang"] if user and "lang" in user.keys() else "en") or "en"
+    if lang not in LANGS:
+        lang = "en"
     ctx.setdefault("request", request)
-    ctx.setdefault("user", current_user(request))
+    ctx.setdefault("user", user)
     ctx.setdefault("passkeys_enabled", settings.passkeys_enabled)
+    ctx.setdefault("lang", lang)
+    ctx.setdefault("langs", LANGS)
+    ctx.setdefault("t", lambda k: translate(lang, k))
     return templates.TemplateResponse(request, template, ctx)
 
 
@@ -82,7 +96,14 @@ async def register(request: Request, email: str = Form(...), password: str = For
         return page(request, "register.html", error="An account with this email already exists.")
     cur = db.execute("INSERT INTO users(email, password_hash, display_name) VALUES (?, ?, ?)",
                      (email, hash_password(password), display_name.strip()))
-    db.execute("INSERT INTO user_settings(user_id) VALUES (?)", (cur.lastrowid,))
+    uid = cur.lastrowid
+    ident = settings.admin_ident.strip()
+    if ident and (email == ident.lower() or display_name.strip().lower() == ident.lower()):
+        db.execute("UPDATE users SET role = 'member' WHERE role = 'admin' AND id != ?", (uid,))
+        db.execute("UPDATE users SET role = 'admin' WHERE id = ?", (uid,))
+    elif not db.query_one("SELECT 1 FROM users WHERE role = 'admin'"):
+        db.execute("UPDATE users SET role = 'admin' WHERE id = ?", (uid,))
+    db.execute("INSERT INTO user_settings(user_id) VALUES (?)", (uid,))
     token = create_session(cur.lastrowid)
     resp = RedirectResponse("/onboarding", status_code=303)
     resp.set_cookie("quipeat_session", token, httponly=True, samesite="lax", max_age=30 * 86400)
@@ -124,6 +145,17 @@ async def onboarding_finish(request: Request, replay: int = Form(0)):
     return RedirectResponse("/settings", status_code=303)
 
 
+@app.post("/settings/lang")
+async def set_lang(request: Request, lang: str = Form(...)):
+    user = require_user(request)
+    if lang not in LANGS:
+        lang = "en"
+    db.execute("UPDATE users SET lang = ? WHERE id = ?", (lang, user["id"]))
+    from urllib.parse import quote
+    msg = translate(lang, "language_saved")
+    return RedirectResponse("/settings?msg=" + quote(msg), status_code=303)
+
+
 @app.post("/logout")
 async def logout(request: Request):
     token = request.cookies.get("quipeat_session")
@@ -155,16 +187,19 @@ async def new_source_form(request: Request):
 
 @app.post("/new")
 async def new_source(request: Request, title: str = Form(...), url: str = Form(""),
-                     topic_text: str = Form(""), file: UploadFile | None = File(None)):
+                     topic_text: str = Form(""), lang: str = Form("en"),
+                     file: UploadFile | None = File(None)):
     user = require_user(request)
     title = title.strip()
     url = url.strip()
     topic_text = topic_text.strip()
+    if lang not in LANGS:
+        lang = user["lang"] if user["lang"] in LANGS else "en"
     try:
         if file and file.filename:
             data = await file.read()
             if len(data) > settings.max_upload_mb * 1024 * 1024:
-                raise IngestError(f"File exceeds {settings.max_upload_mb} MB limit.")
+                raise IngestError("__err_file_too_big")
             tmp = Path(settings.upload_dir) / f"{secrets.token_hex(8)}_{file.filename}"
             tmp.write_bytes(data)
             raw = extract_text_from_file(tmp, file.filename)
@@ -177,11 +212,16 @@ async def new_source(request: Request, title: str = Form(...), url: str = Form("
             raw = topic_text
             kind, ref = "text", None
         else:
-            raise IngestError("Provide a file, a URL, or some text about the topic.")
+            raise IngestError("__err_empty_source")
     except IngestError as e:
-        return page(request, "new_source.html", error=str(e))
+        key = str(e)
+        if key.startswith("__"):
+            key = key[2:]
+        else:
+            key = "err_generic"
+        return page(request, "new_source.html", error=translate(lang_of(user), key))
     if not raw.strip():
-        return page(request, "new_source.html", error="No readable text found in the source.")
+        return page(request, "new_source.html", error=translate(lang_of(user), "err_no_text"))
     if not title:
         title = (ref or "Untitled")[:80]
     cur = db.execute("INSERT INTO sources(user_id, kind, title, original_ref, raw_text) VALUES (?, ?, ?, ?, ?)",
@@ -189,8 +229,8 @@ async def new_source(request: Request, title: str = Form(...), url: str = Form("
     source_id = cur.lastrowid
     for idx, piece in enumerate(chunk_text(raw)):
         db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)", (source_id, idx, piece))
-    cur = db.execute("INSERT INTO decks(user_id, source_id, title) VALUES (?, ?, ?)",
-                     (user["id"], source_id, title))
+    cur = db.execute("INSERT INTO decks(user_id, source_id, title, lang) VALUES (?, ?, ?, ?)",
+                     (user["id"], source_id, title, lang))
     deck_id = cur.lastrowid
     job_id = start_generation(user["id"], deck_id)
     return RedirectResponse(f"/decks/{deck_id}?job={job_id}", status_code=303)
@@ -219,8 +259,7 @@ async def job_status(request: Request, deck_id: int):
         (deck_id, user["id"]))
     if not job:
         return HTMLResponse("")
-    return templates.TemplateResponse(request, "_job_status.html", {
-        "request": request, "job": job, "deck_id": deck_id, "user": user})
+    return page(request, "_job_status.html", job=job, deck_id=deck_id)
 
 
 @app.get("/decks/{deck_id}/questions", response_class=HTMLResponse)
@@ -291,11 +330,10 @@ async def study_answer(request: Request, deck_id: int, question_id: int = Form(.
         sess_id = sess["id"]
     db.execute("UPDATE study_sessions SET cards_reviewed = cards_reviewed + 1, xp_earned = xp_earned + ? WHERE id = ?",
                (xp, sess_id))
-    return templates.TemplateResponse(request, "_answer_result.html", {
-        "request": request, "user": user, "correct": correct, "xp": xp,
-        "explanation": q["explanation"], "options": json.loads(q["options_json"]),
-        "correct_index": q["correct_index"], "deck_id": deck_id,
-        "award": award, "activity": activity, "badges": badges})
+    return page(request, "_answer_result.html", correct=correct, xp=xp,
+                explanation=q["explanation"], options=json.loads(q["options_json"]),
+                correct_index=q["correct_index"], deck_id=deck_id,
+                award=award, activity=activity, badges=badges)
 
 
 # ---------- stats ----------
@@ -316,6 +354,33 @@ async def stats(request: Request):
                 badges=badges, recent=recent, all_badges=gamify.BADGES)
 
 
+# ---------- admin ----------
+
+def require_admin(request: Request):
+    user = require_user(request)
+    if user["role"] != "admin":
+        raise _Redirect("/decks")
+    return user
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request, msg: str | None = None, error: str | None = None):
+    user = require_admin(request)
+    users = db.query("SELECT id, email, display_name, role, created_at FROM users ORDER BY id")
+    return page(request, "admin.html", users=users, msg=msg, error=error)
+
+
+@app.post("/admin/users/{user_id}/role")
+async def admin_set_role(request: Request, user_id: int, role: str = Form(...)):
+    user = require_admin(request)
+    if role not in ("member", "privileged", "admin"):
+        return RedirectResponse("/admin?error=Invalid role", status_code=303)
+    if user_id == user["id"] and role != "admin":
+        return RedirectResponse("/admin?error=You cannot demote yourself", status_code=303)
+    db.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+    return RedirectResponse("/admin?msg=Role updated", status_code=303)
+
+
 # ---------- settings (LLM keys) ----------
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -323,9 +388,14 @@ async def settings_page(request: Request, msg: str | None = None, error: str | N
     user = require_user(request)
     keys = db.query("SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at DESC", (user["id"],))
     us = db.query_one("SELECT * FROM user_settings WHERE user_id = ?", (user["id"],))
+    providers = dict(DEFAULT_MODELS)
+    if user["role"] in ("admin", "privileged") and settings.mistral_api_key:
+        providers = {"builtin": [settings.builtin_model], **providers}
     return page(request, "settings.html",
                 keys=[{**dict(k), "masked": mask_key(decrypt_secret(k["encrypted_key"]))} for k in keys],
-                settings_row=us, providers=DEFAULT_MODELS, msg=msg, error=error)
+                settings_row=us, providers=providers, msg=msg, error=error,
+                builtin_available=bool(settings.mistral_api_key),
+                settings=settings)
 
 
 @app.post("/settings/keys")

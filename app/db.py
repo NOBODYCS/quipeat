@@ -28,7 +28,30 @@ def init_db() -> None:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         if "onboarded_at" not in cols:
             conn.execute("ALTER TABLE users ADD COLUMN onboarded_at TEXT")
+        if "role" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'member'")
+        if "lang" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'")
         conn.commit()
+        _ensure_admin(conn)
+        conn.commit()
+
+
+def _ensure_admin(conn: sqlite3.Connection) -> None:
+    from .config import settings
+    ident = settings.admin_ident.strip()
+    if ident:
+        row = conn.execute(
+            "SELECT id FROM users WHERE lower(email) = lower(?) OR lower(display_name) = lower(?) LIMIT 1",
+            (ident, ident)).fetchone()
+        if row:
+            conn.execute("UPDATE users SET role = 'member' WHERE role = 'admin' AND id != ?", (row["id"],))
+            conn.execute("UPDATE users SET role = 'admin' WHERE id = ?", (row["id"],))
+            return
+    if not conn.execute("SELECT 1 FROM users WHERE role = 'admin'").fetchone():
+        row = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+        if row:
+            conn.execute("UPDATE users SET role = 'admin' WHERE id = ?", (row["id"],))
 
 
 def query(sql: str, params: tuple = ()) -> list[sqlite3.Row]:

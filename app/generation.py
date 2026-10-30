@@ -12,6 +12,7 @@ from .llm.mock import MockProvider
 from .llm.providers import make_provider
 from .llm.structured import structured_call
 from .security import decrypt_secret
+from .i18n import translate
 
 PROMPT_VERSION = "v1"
 QUESTIONS_PER_CHUNK = 2
@@ -49,12 +50,19 @@ def _get_provider(user_id: int):
     if settings.llm_mock:
         return MockProvider(), "mock-model"
     us = db.query_one("SELECT * FROM user_settings WHERE user_id = ?", (user_id,))
+    user = db.query_one("SELECT role FROM users WHERE id = ?", (user_id,))
+    if us and us["default_provider"] == "builtin":
+        if user["role"] not in ("admin", "privileged"):
+            raise RuntimeError("builtin_denied")
+        if not settings.mistral_api_key:
+            raise RuntimeError("builtin_no_server_key")
+        return make_provider("mistral", settings.mistral_api_key), settings.builtin_model
     if not us or not us["active_key_id"]:
-        raise RuntimeError("No LLM API key configured. Add one in Settings.")
+        raise RuntimeError("no_llm_key")
     key = db.query_one("SELECT * FROM api_keys WHERE id = ? AND user_id = ?",
                        (us["active_key_id"], user_id))
     if not key:
-        raise RuntimeError("Active API key not found. Re-add it in Settings.")
+        raise RuntimeError("no_key_builtin")
     provider = make_provider(key["provider"], decrypt_secret(key["encrypted_key"]))
     return provider, us["default_model"]
 
@@ -83,11 +91,25 @@ def _similarity(a: str, b: str) -> float:
     return len(ta & tb) / len(ta | tb)
 
 
+LANG_NAMES = {"en": "English", "pl": "Polish (polski)"}
+
+
+def _lang_instruction(lang: str) -> str:
+    name = LANG_NAMES.get(lang, "English")
+    if lang == "pl":
+        return ("\n\nLANGUAGE: Write ALL questions, options, explanations and difficulty labels "
+                "in POLISH (polski). Use natural, correct Polish. The source text may be in any "
+                "language — the quiz output must still be in Polish.")
+    return ("\n\nLANGUAGE: Write ALL questions, options, explanations and difficulty labels "
+            "in ENGLISH. The source text may be in any language — the quiz output must still be in English.")
+
+
 def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
     """Runs as a background thread: for every chunk, draft questions, verify each
     against its chunk, dedup, and insert passing ones. Progress is tracked in jobs."""
     job = db.query_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
     deck = db.query_one("SELECT * FROM decks WHERE id = ?", (deck_id,))
+    gen_lang = deck["lang"] if "lang" in deck.keys() and deck["lang"] in LANG_NAMES else "en"
     chunks = db.query(
         "SELECT * FROM chunks WHERE source_id = ? ORDER BY idx", (deck["source_id"],))
     try:
@@ -99,6 +121,7 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
             user_msg = (
                 f"Source text:\n\"\"\"\n{chunk['text']}\n\"\"\"\n\n"
                 f"Generate {QUESTIONS_PER_CHUNK} multiple-choice questions from the source text above."
+                + _lang_instruction(gen_lang)
             )
             try:
                 drafts, _ = structured_call(provider, model, _system_prompt("generate"),
@@ -141,8 +164,12 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
                    (job_id,))
         db.execute("UPDATE decks SET status='ready' WHERE id=?", (deck_id,))
     except Exception as e:
+        ulang = (db.query_one("SELECT lang FROM users WHERE id = ?", (user_id,)) or {"lang": "en"})["lang"]
+        msg = str(e)
+        if msg in ("builtin_denied", "builtin_no_server_key", "no_llm_key", "no_key_builtin"):
+            msg = translate(ulang, msg)
         db.execute("UPDATE jobs SET status='failed', error=?, finished_at=datetime('now') WHERE id=?",
-                   (str(e)[:500], job_id))
+                   (msg[:500], job_id))
         db.execute("UPDATE decks SET status='failed' WHERE id=?", (deck_id,))
 
 

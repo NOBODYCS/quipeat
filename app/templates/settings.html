@@ -1,22 +1,36 @@
 {% extends "base.html" %}
 {% block title %}Settings · Quipeat{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-extrabold mb-6">Settings</h1>
+<h1 class="text-2xl font-extrabold mb-6">{{ t("settings_title") }}</h1>
 {% if msg %}<div class="alert-ok">{{ msg }}</div>{% endif %}
 {% if error %}<div class="alert-error">{{ error }}</div>{% endif %}
 
 <div class="card p-5 mb-6">
-  <h2 class="text-lg font-extrabold mb-1">Connect an LLM</h2>
-  <p class="text-sm text-slate-400 mb-4">Paste your own API key — it's stored encrypted and used only server-side to generate questions. OpenRouter gives you many models with one key; Mistral uses your Mistral Studio key directly.</p>
+  {% if builtin_available and user.role in ('admin', 'privileged') %}
+  <div class="card p-5 mb-6 border-volt-600/40">
+    <h2 class="text-lg font-extrabold mb-1">✨ {{ t("builtin_title") }} <span class="chip chip-volt ml-1">privileged</span></h2>
+    <p class="text-sm text-slate-400 mb-4">{{ t("builtin_hint") }}</p>
+    <form method="post" action="/settings/model" class="flex flex-wrap gap-2">
+      <input type="hidden" name="provider" value="builtin">
+      <input type="hidden" name="model" value="{{ settings.builtin_model if settings else '' }}">
+      <button class="btn-primary">{{ t("use_builtin") }} ({{ settings.builtin_model if settings else 'mistral-large-latest' }})</button>
+      {% if settings_row and settings_row.default_provider == 'builtin' %}<span class="chip chip-volt self-center">{{ t("currently_active") }}</span>{% endif %}
+    </form>
+  </div>
+  <h2 class="text-lg font-extrabold mb-1">{{ t("or_own_key") }}</h2>
+  {% else %}
+  <h2 class="text-lg font-extrabold mb-1">{{ t("connect_llm") }}</h2>
+  {% endif %}
+  <p class="text-sm text-slate-400 mb-4">{{ t("connect_llm_hint") }}</p>
   <form method="post" action="/settings/keys" class="grid gap-3 sm:grid-cols-2">
     <div>
-      <label for="provider" class="label">Provider</label>
+      <label for="provider" class="label">{{ t("provider") }}</label>
       <select name="provider" id="provider" class="input">
-        {% for p in providers %}<option value="{{ p }}" {% if settings_row and settings_row.default_provider == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+        {% for p in providers %}{% if p != 'builtin' %}<option value="{{ p }}" {% if settings_row and settings_row.default_provider == p %}selected{% endif %}>{{ p }}</option>{% endif %}{% endfor %}
       </select>
     </div>
     <div>
-      <label for="model" class="label">Model</label>
+      <label for="model" class="label">{{ t("model") }}</label>
       <select name="model" id="model" class="input">
         {% for p, models in providers.items() %}
           {% for m in models %}<option value="{{ m }}" data-provider="{{ p }}" {% if settings_row and settings_row.default_model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
@@ -24,21 +38,21 @@
       </select>
     </div>
     <div>
-      <label for="api_key" class="label">API key</label>
+      <label for="api_key" class="label">{{ t("api_key") }}</label>
       <input name="api_key" id="api_key" type="password" autocomplete="off" placeholder="sk-…" required class="input">
     </div>
     <div>
-      <label for="label" class="label">Label (optional)</label>
-      <input name="label" id="label" type="text" placeholder="e.g. my main key" class="input">
+      <label for="label" class="label">{{ t("label") }}</label>
+      <input name="label" id="label" type="text" placeholder="{{ t("label_ph") }}" class="input">
     </div>
-    <button type="submit" class="btn-primary sm:col-span-2">Save &amp; activate key</button>
+    <button type="submit" class="btn-primary sm:col-span-2">{{ t("save_activate") }}</button>
   </form>
 </div>
 
 <div class="card p-5 mb-6">
-  <h2 class="text-lg font-extrabold mb-3">Saved keys</h2>
+  <h2 class="text-lg font-extrabold mb-3">{{ t("saved_keys") }}</h2>
   {% if not keys %}
-  <p class="text-sm text-slate-400">No keys yet — add one above to start generating decks.</p>
+  <p class="text-sm text-slate-400">{{ t("no_keys") }}</p>
   {% else %}
   <ul class="space-y-2">
     {% for k in keys %}
@@ -46,16 +60,16 @@
       <span class="font-semibold text-white">{{ k.provider }}</span>
       <span class="text-slate-400 font-mono text-xs">{{ k.masked }}</span>
       {% if k.label %}<span class="text-slate-500 text-xs">({{ k.label }})</span>{% endif %}
-      {% if settings_row and settings_row.active_key_id == k.id %}<span class="chip chip-volt">active</span>{% endif %}
+      {% if settings_row and settings_row.active_key_id == k.id %}<span class="chip chip-volt">{{ t("active") }}</span>{% endif %}
       <span class="ml-auto flex gap-3">
         {% if not (settings_row and settings_row.active_key_id == k.id) %}
         <form method="post" action="/settings/keys/{{ k.id }}/activate">
           <input type="hidden" name="provider" value="{{ k.provider }}">
           <input type="hidden" name="model" value="{{ settings_row.default_model if settings_row else '' }}">
-          <button class="text-xs text-volt-300 font-semibold hover:underline">Set active</button>
+          <button class="text-xs text-volt-300 font-semibold hover:underline">{{ t("set_active") }}</button>
         </form>
         {% endif %}
-        <form method="post" action="/settings/keys/{{ k.id }}/delete"><button class="text-xs text-red-400 hover:underline">Delete</button></form>
+        <form method="post" action="/settings/keys/{{ k.id }}/delete"><button class="text-xs text-red-400 hover:underline">{{ t("delete") }}</button></form>
       </span>
     </li>
     {% endfor %}
@@ -64,20 +78,20 @@
 </div>
 
 <div class="card p-5 mb-6">
-  <h2 class="text-lg font-extrabold mb-3">Default model</h2>
+  <h2 class="text-lg font-extrabold mb-3">{{ t("default_model") }}</h2>
   <form method="post" action="/settings/model" class="flex flex-wrap gap-2">
     <select name="provider" class="input !w-auto">
       {% for p in providers %}<option value="{{ p }}" {% if settings_row and settings_row.default_provider == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
     </select>
     <input name="model" type="text" value="{{ settings_row.default_model if settings_row else '' }}" placeholder="model id"
            class="input flex-1 min-w-[200px]">
-    <button class="btn-ghost">Save</button>
+    <button class="btn-ghost">{{ t("save") }}</button>
   </form>
 </div>
 
 <div class="card p-5">
-  <h2 class="text-lg font-extrabold mb-3">Help</h2>
-  <a href="/onboarding?replay=1" class="btn-ghost">↺ Replay the intro tutorial</a>
+  <h2 class="text-lg font-extrabold mb-3">{{ t("help") }}</h2>
+  <a href="/onboarding?replay=1" class="btn-ghost">↺ {{ t("replay_tutorial") }}</a>
 </div>
 
 <script>

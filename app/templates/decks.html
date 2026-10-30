@@ -2,14 +2,14 @@
 {% block title %}Decks · Quipeat{% endblock %}
 {% block content %}
 <div class="flex items-center justify-between mb-6 gap-3">
-  <h1 class="text-2xl font-extrabold">Your decks</h1>
-  <a href="/new" class="btn-primary shrink-0">＋ New deck</a>
+  <h1 class="text-2xl font-extrabold">{{ t("decks_title") }}</h1>
+  <a href="/new" class="btn-primary shrink-0">{{ t("new_deck") }}</a>
 </div>
 {% if not decks %}
 <div class="card border-dashed p-10 text-center">
   <div class="text-4xl mb-3">🗂</div>
-  <p class="text-slate-400">No decks yet. Upload a document, paste a link, or type a topic to generate your first quiz deck.</p>
-  <a href="/new" class="btn-primary mt-5 inline-flex">Create one now</a>
+  <p class="text-slate-400">{{ t("empty_decks") }}</p>
+  <a href="/new" class="btn-primary mt-5 inline-flex">{{ t("create_one") }}</a>
 </div>
 {% else %}
 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -19,8 +19,8 @@
     <div class="flex flex-wrap gap-1.5 text-xs">
       <span class="chip">{{ d.source_kind }}</span>
       <span class="chip">{{ d.status }}</span>
-      <span class="chip">{{ d.q_count }} questions</span>
-      {% if d.due_count %}<span class="chip chip-volt">{{ d.due_count }} due</span>{% endif %}
+      <span class="chip">{{ d.q_count }} {{ t("questions_n") }}</span>
+      {% if d.due_count %}<span class="chip chip-volt">{{ d.due_count }} {{ t("due_n") }}</span>{% endif %}
     </div>
   </a>
   {% endfor %}

@@ -1,7 +1,7 @@
 <div id="job-status" {% if job.status not in ('done','failed') %}hx-get="/decks/{{ deck_id }}/job-status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}
      class="card mb-6 p-4">
   <div class="flex justify-between text-sm mb-2">
-    <span class="font-semibold">{% if job.status == 'running' %}⚡ Generating questions…{% elif job.status == 'queued' %}Queued…{% elif job.status == 'done' %}✅ Generation complete{% else %}❌ Generation failed{% endif %}</span>
+    <span class="font-semibold">{% if job.status == 'running' %}⚡ {{ t("gen_running") }}{% elif job.status == 'queued' %}{{ t("gen_queued") }}{% elif job.status == 'done' %}✅ {{ t("gen_done") }}{% else %}❌ {{ t("gen_failed") }}{% endif %}</span>
     <span class="text-slate-400 tabular-nums">{{ job.done }}/{{ job.total }}</span>
   </div>
   <div class="h-2.5 rounded-full bg-ink-700 overflow-hidden">

@@ -15,5 +15,11 @@ directly entailed by the source text. You never use outside knowledge to invent 
 - Write a short explanation (1-2 sentences) citing why the correct answer is correct.
 - Prompts and options must be self-contained and grammatically clean.
 
+# Language
+The user message ends with an explicit LANGUAGE instruction. Follow it exactly: every
+prompt, option, and explanation must be written in that language, with natural,
+grammatically correct phrasing. The source text language does not matter — the quiz
+output language is what the instruction says.
+
 # Output
 Return JSON matching the schema exactly. No prose outside the JSON.

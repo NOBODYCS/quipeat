@@ -25,8 +25,8 @@ def extract_text_from_file(path: Path, filename: str) -> str:
         if suffix in (".txt", ".md", ".markdown", ".csv"):
             return path.read_text(encoding="utf-8", errors="replace")
     except Exception as e:
-        raise IngestError(f"Could not parse {filename}: {e}")
-    raise IngestError(f"Unsupported file type: {suffix or '(none)'}. Use PDF, DOCX, TXT or MD.")
+        raise IngestError("__err_parse")
+    raise IngestError("__err_unsupported")
 
 
 def extract_text_from_url(url: str) -> str:
@@ -42,12 +42,12 @@ def extract_text_from_url(url: str) -> str:
             text = re.sub(r"<[^>]+>", " ", downloaded)
             text = re.sub(r"\s+", " ", text)
         if len(text) < 200:
-            raise IngestError("Could not extract readable text from that URL.")
+            raise IngestError("__err_extract")
         return text
     except IngestError:
         raise
     except Exception as e:
-        raise IngestError(f"Could not fetch URL: {e}")
+        raise IngestError("__err_fetch")
 
 
 def _tokens(text: str) -> list[str]:

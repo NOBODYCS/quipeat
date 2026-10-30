@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     streak_days   INTEGER NOT NULL DEFAULT 0,
     last_active_day TEXT,
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    -- lang is added by db.init_db() (idempotent ALTER)
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -76,6 +77,7 @@ CREATE TABLE IF NOT EXISTS decks (
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     source_id  INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
     title      TEXT NOT NULL,
+    lang       TEXT NOT NULL DEFAULT 'en',
     status     TEXT NOT NULL DEFAULT 'draft',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
