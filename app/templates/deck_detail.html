@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ deck.title }} · Quipeat{% endblock %}
+{% block content %}
+<div class="mb-6">
+  <a href="/decks" class="text-sm text-slate-400 hover:text-white">← Decks</a>
+  <h1 class="text-2xl font-bold mt-1">{{ deck.title }}</h1>
+  <p class="text-sm text-slate-400">{{ deck.source_kind }}{% if deck.original_ref %} · {{ deck.original_ref }}{% endif %} · {{ deck.q_count }} questions · <span class="text-emerald-300">{{ deck.due_count }} due</span> · status: {{ deck.status }}</p>
+</div>
+{% if job and job.status not in ('done', 'failed') %}
+<div id="job-status" hx-get="/decks/{{ deck.id }}/job-status" hx-trigger="load, every 2s" hx-swap="outerHTML">
+  {% include "_job_status.html" %}
+</div>
+{% elif job %}
+  {% include "_job_status.html" %}
+{% endif %}
+<div class="flex gap-3">
+  <a href="/study/{{ deck.id }}" class="rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold px-4 py-2 text-sm">Study now</a>
+  <a href="/decks/{{ deck.id }}/questions" class="rounded-lg border border-slate-700 px-4 py-2 text-sm hover:border-slate-500">Browse questions</a>
+</div>
+{% endblock %}

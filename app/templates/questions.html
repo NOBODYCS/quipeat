@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Questions · Quipeat{% endblock %}
+{% block content %}
+<div class="mb-6">
+  <a href="/decks/{{ deck.id }}" class="text-sm text-slate-400 hover:text-white">← {{ deck.title }}</a>
+  <h1 class="text-2xl font-bold mt-1">Questions ({{ questions | length }})</h1>
+</div>
+<div class="space-y-4">
+  {% for q in questions %}
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+    <div class="flex items-start justify-between gap-3">
+      <p class="font-medium">{{ loop.index }}. {{ q.prompt }}</p>
+      <span class="text-xs rounded bg-slate-800 px-2 py-0.5 text-slate-400 shrink-0">{{ q.difficulty }}</span>
+    </div>
+    <ul class="mt-2 space-y-1 text-sm">
+      {% for opt in q.options %}
+      <li class="{% if loop.index0 == q.correct_index %}text-emerald-300{% else %}text-slate-400{% endif %}">
+        {{ "ABCD"[loop.index0] }}) {{ opt }}{% if loop.index0 == q.correct_index %} ✓{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="mt-2 text-xs text-slate-500">{{ q.explanation }}</p>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

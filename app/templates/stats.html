@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Stats · Quipeat{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Your progress</h1>
+<div class="grid gap-4 sm:grid-cols-4 mb-8">
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-bold">{{ user.level }}</div><div class="text-xs text-slate-400">Level</div></div>
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-bold">{{ user.xp_total }}</div><div class="text-xs text-slate-400">Total XP</div></div>
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-bold">{{ user.streak_days }} 🔥</div><div class="text-xs text-slate-400">Day streak</div></div>
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-bold">{{ accuracy }}%</div><div class="text-xs text-slate-400">Accuracy ({{ total_r }} reviews, {{ total_q }} cards)</div></div>
+</div>
+<h2 class="text-lg font-semibold mb-3">Badges</h2>
+<div class="flex flex-wrap gap-2 mb-8">
+  {% for name, desc in all_badges.items() %}
+  {% set earned = badges | selectattr('badge', 'equalto', name) | list %}
+  <span class="rounded-lg border px-3 py-1.5 text-sm {% if earned %}border-amber-600 bg-amber-950/40 text-amber-200{% else %}border-slate-800 text-slate-500{% endif %}" title="{{ desc }}">{{ name }}</span>
+  {% endfor %}
+</div>
+<h2 class="text-lg font-semibold mb-3">Last 14 days</h2>
+<div class="flex items-end gap-1 h-24">
+  {% for r in recent %}
+  <div class="flex-1 bg-emerald-600/70 rounded-t" style="height:{{ [r.c * 8, 96] | min }}%" title="{{ r.d }}: {{ r.c }} reviews"></div>
+  {% endfor %}
+</div>
+{% endblock %}

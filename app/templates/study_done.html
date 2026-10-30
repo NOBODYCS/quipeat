@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}All caught up · Quipeat{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-md text-center mt-16">
+  <div class="text-5xl mb-4">🎉</div>
+  <h1 class="text-2xl font-bold mb-2">All caught up on “{{ deck.title }}”</h1>
+  <p class="text-slate-400 mb-6">No cards are due right now. Come back later — spaced repetition will bring them back at the right time.</p>
+  <a href="/study" class="rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold px-4 py-2 text-sm">Study another deck</a>
+</div>
+{% endblock %}

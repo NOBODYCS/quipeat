@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Study · Quipeat{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-2xl" id="card-area">
+  <div class="flex justify-between text-sm text-slate-400 mb-4">
+    <a href="/study" class="hover:text-white">← decks</a>
+    <span>{{ deck.title }}</span>
+  </div>
+  <div class="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+    <p class="text-lg font-medium mb-5">{{ q.prompt }}</p>
+    <form hx-post="/study/{{ deck.id }}/answer" hx-target="#card-area" hx-swap="outerHTML" class="space-y-2">
+      <input type="hidden" name="question_id" value="{{ q.id }}">
+      {% for opt in q.options %}
+      <button type="submit" name="choice" value="{{ loop.index0 }}"
+              class="w-full text-left rounded-lg border border-slate-700 bg-slate-950 hover:border-emerald-500 px-4 py-3 text-sm transition">
+        <span class="text-slate-500 mr-2">{{ "ABCD"[loop.index0] }})</span>{{ opt }}
+      </button>
+      {% endfor %}
+    </form>
+  </div>
+</div>
+{% endblock %}

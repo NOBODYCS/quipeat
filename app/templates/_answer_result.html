@@ -1,0 +1,16 @@
+<div class="mx-auto max-w-2xl" id="card-area">
+  <div class="rounded-2xl border {% if correct %}border-emerald-700 bg-emerald-950/40{% else %}border-red-800 bg-red-950/40{% endif %} p-6">
+    <div class="flex items-center justify-between mb-3">
+      <span class="font-semibold {% if correct %}text-emerald-300{% else %}text-red-300{% endif %}">
+        {% if correct %}Correct{% else %}Not quite{% endif %}
+      </span>
+      <span class="text-sm text-amber-300">+{{ xp }} XP</span>
+    </div>
+    <p class="text-sm text-slate-300 mb-4">{{ explanation }}</p>
+    {% if award.leveled_up %}<p class="mb-2 rounded-lg bg-amber-900/40 border border-amber-700 px-3 py-2 text-sm text-amber-200">🎉 Level up! You are now level {{ award.level }}.</p>{% endif %}
+    {% if activity.new_badges %}<p class="mb-2 text-sm text-emerald-300">🏅 New badge earned!</p>{% endif %}
+    <div class="flex gap-2 mt-4">
+      <a href="/study/{{ deck_id }}" class="flex-1 text-center rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold py-2 text-sm">Next question</a>
+    </div>
+  </div>
+</div>
