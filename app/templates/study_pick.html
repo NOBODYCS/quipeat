@@ -3,14 +3,20 @@
 {% block content %}
 <h1 class="text-2xl font-extrabold mb-6">{{ t("study_pick_title") }}</h1>
 {% if not decks %}
-<div class="rounded-xl border border-dashed border-ink-600 p-10 text-center text-mist-400">{{ t("empty_study") }}</div>
+<div class="rounded-xl border border-dashed border-ink-600 p-10 text-center">
+  <p class="text-mist-400 mb-4">{{ t("empty_study") }}</p>
+  <a href="/new" class="btn-primary">{{ t("new_deck") }}</a>
+</div>
 {% else %}
 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
   {% for d in decks %}
-  <a href="/study/{{ d.id }}" class="card card-hover p-4">
+  <div class="card card-hover p-4">
     <div class="font-semibold mb-1.5 truncate">{{ d.title }}</div>
-    <span class="chip chip-mint">{{ d.due }} {{ t("due_n") }}</span>
-  </a>
+    <div class="flex items-center justify-between gap-2">
+      <span class="chip chip-mint">{{ d.due }} {{ t("due_n") }}</span>
+      <a href="/study/{{ d.id }}" class="btn-primary btn-sm">{{ t("nav_study") }} →</a>
+    </div>
+  </div>
   {% endfor %}
 </div>
 {% endif %}

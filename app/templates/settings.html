@@ -70,7 +70,7 @@
           <button class="text-xs text-volt-300 font-semibold hover:underline">{{ t("set_active") }}</button>
         </form>
         {% endif %}
-        <form method="post" action="/settings/keys/{{ k.id }}/delete"><button class="text-xs text-red-400 hover:underline">{{ t("delete") }}</button></form>
+        <form method="post" action="/settings/keys/{{ k.id }}/delete" onsubmit="return confirm('{{ t("confirm_delete_key") }}')"><button class="text-xs text-red-400 hover:underline">{{ t("delete") }}</button></form>
       </span>
     </li>
     {% endfor %}
@@ -78,24 +78,13 @@
   {% endif %}
 </div>
 
-<div class="card p-5 mb-6">
-  <h2 class="text-lg font-extrabold mb-3">{{ t("default_model") }}</h2>
-  <form method="post" action="/settings/model" class="flex flex-wrap gap-2">
-    <select name="provider" class="input !w-auto">
-      {% for p in providers %}<option value="{{ p }}" {% if settings_row and settings_row.default_provider == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
-    </select>
-    <input name="model" type="text" value="{{ settings_row.default_model if settings_row else '' }}" placeholder="model id"
-           class="input flex-1 min-w-[200px]">
-    <button class="btn-ghost">{{ t("save") }}</button>
-  </form>
-</div>
 
 <div class="card p-5 mb-6">
   <h2 class="text-lg font-extrabold mb-3"><svg class="inline h-4 w-4 text-flame-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4-3 5-3 8a3 3 0 0 0 6 .5C15 8 18 8 18 13a6 6 0 0 1-12 0c0-4 5-6 6-11z"/></svg>  {{ t("streak") }}</h2>
   <p class="text-sm text-mist-400 mb-3">{% if user.freeze_available %}<svg class="inline h-4 w-4 text-aqua-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/></svg>  {{ t("freeze_avail") }} (1){% endif %}</p>
   <form method="post" action="/settings/streaks">
     <input type="hidden" name="hide" value="{{ 0 if user.hide_streaks else 1 }}">
-    <button class="btn-ghost text-xs">{{ t("hide_streaks") }}: {% if user.hide_streaks %}ON{% else %}OFF{% endif %}</button>
+    <button class="btn-ghost text-xs">{% if user.hide_streaks %}{{ t("show_streaks") }}{% else %}{{ t("hide_streaks") }}{% endif %}</button>
   </form>
 </div>
 <div class="card p-5">

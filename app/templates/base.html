@@ -21,23 +21,16 @@
         <span class="text-lg font-extrabold tracking-tight text-white hidden sm:block">Quipeat</span>
       </a>
       <nav class="hidden md:flex items-center gap-1 ml-2" aria-label="Main">
-        <div class="relative" id="study-menu">
-          <button class="navlink !border !border-volt-600/50 !bg-volt-400/10 !text-volt-300" id="study-menu-btn" aria-haspopup="true" aria-expanded="false" aria-controls="study-dd">
-            <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg> {{ t("nav_study") }}
-            <svg class="inline h-3 w-3" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-          <div id="study-dd" class="hidden absolute left-0 mt-1 w-48 card !p-1.5 z-30" role="menu">
-            <a href="/study" role="menuitem" class="block rounded-lg px-3 py-2 text-sm font-semibold text-mist-200 hover:bg-ink-750"><svg class="inline h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19a2 2 0 0 1 2-2h13"/></svg>{{ t("pick_deck") }}</a>
-            <a href="/new" role="menuitem" class="block rounded-lg px-3 py-2 text-sm font-bold text-volt-300 hover:bg-ink-750"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> {{ t("nav_new") }}</a>
-          </div>
-        </div>
+        <a href="/study" class="navlink"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg> {{ t("nav_study") }}</a>
         <a href="/decks" class="navlink"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> {{ t("nav_decks") }}</a>
+        <a href="/stats" class="navlink"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg> {{ t("nav_stats") }}</a>
         {% if user.role == 'admin' %}<a href="/admin" class="navlink"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6L14 13l-3-3z"/></svg> {{ t("nav_admin") }}</a>{% endif %}
       </nav>
       <div class="ml-auto flex items-center gap-1.5">
-        {% if user.streak_days > 0 and not user.hide_streaks %}<span class="chip inline-flex" title="{{ t('streak') }}"><svg class="h-3.5 w-3.5 text-flame-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4-3 5-3 8a3 3 0 0 0 6 .5C15 8 18 8 18 13a6 6 0 0 1-12 0c0-4 5-6 6-11z"/></svg>{{ user.streak_days }}{% if user.freeze_available %} <svg class="h-3.5 w-3.5 text-aqua-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2v20M4 6l16 12M20 6L4 18"/></svg>{% endif %}</span>{% endif %}
-        <span class="chip inline-flex" title="{{ t('level') }} · {{ t('total_xp') }}">Lvl {{ user.level }} · {{ user.xp_total }} XP</span>
-        {% if user.role == 'admin' %}<span class="chip chip-volt inline-flex">admin</span>{% endif %}
+        {% if user.streak_days > 0 and not user.hide_streaks %}<span class="chip hidden sm:inline-flex" title="{{ t('streak') }}"><svg class="h-3.5 w-3.5 text-flame-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4-3 5-3 8a3 3 0 0 0 6 .5C15 8 18 8 18 13a6 6 0 0 1-12 0c0-4 5-6 6-11z"/></svg>{{ user.streak_days }}{% if user.freeze_available %} <svg class="h-3.5 w-3.5 text-aqua-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/></svg>{% endif %}</span>{% endif %}
+        <span class="chip hidden sm:inline-flex" title="{{ t('level') }} · {{ t('total_xp') }}">Lvl {{ user.level }} · {{ user.xp_total }} XP</span>
+        {% if user.role == 'admin' %}<span class="chip chip-volt hidden sm:inline-flex">admin</span>{% endif %}
+        <a href="/new" class="btn-primary btn-sm shrink-0 hidden sm:inline-flex"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> {{ t("nav_new") }}</a>
         <form method="post" action="/settings/lang">
           <input type="hidden" name="lang" value="{{ 'pl' if lang == 'en' else 'en' }}">
           <button class="iconbtn" title="{{ t('site_language') }}" aria-label="{{ t('site_language') }}">{{ '🇵🇱' if lang == 'en' else '🇬🇧' }}</button>
@@ -45,7 +38,7 @@
         <a href="/onboarding?replay=1" class="iconbtn hidden sm:grid" title="{{ t('replay_tutorial') }}" aria-label="{{ t('replay_tutorial') }}"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.3a2.6 2.6 0 0 1 5.1.7c0 1.7-2.4 2.2-2.4 3.5"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg></a>
         <a href="/settings" class="iconbtn" title="{{ t('nav_settings') }}" aria-label="{{ t('nav_settings') }}"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.5a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.4 2.4h4l.4-2.4a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg></a>
         <form method="post" action="/logout">
-          <button class="iconbtn" title="{{ t('nav_logout') }}" aria-label="{{ t('nav_logout') }}"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg></button>
+          <button class="iconbtn" title="{{ t('nav_logout') }}" aria-label="{{ t('nav_logout') }}" onclick="return confirm('{{ t('confirm_logout') }}')"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg></button>
         </form>
       </div>
     </div>
@@ -91,74 +84,16 @@
     {% endif %}
   </div>
   {% if user %}
-  <div id="mobile-study-sheet" class="md:hidden fixed inset-0 z-40 hidden" role="dialog" aria-modal="true" aria-label="{{ t('nav_study') }}">
-    <div class="absolute inset-0 bg-black/60" data-sheet-close></div>
-    <div class="absolute bottom-0 inset-x-0 rounded-t-3xl border-t border-ink-700 bg-ink-900 p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
-      <div class="mx-auto w-10 h-1 rounded-full bg-ink-600 mb-4"></div>
-      <div class="text-sm font-extrabold text-white mb-2 px-1"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg> {{ t("nav_study") }}</div>
-      <a href="/study" class="block rounded-xl bg-ink-850 border border-ink-700 px-4 py-3.5 mb-2 text-sm font-bold text-mist-100"><svg class="inline h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19a2 2 0 0 1 2-2h13"/></svg>{{ t("pick_deck") }}</a>
-      <a href="/new" class="block rounded-xl px-4 py-3.5 text-sm font-extrabold text-ink-950 text-center shadow-btn" style="background-image:linear-gradient(180deg,#d9f96e,#c8f04a 55%,#b4e234)"><svg class="h-[18px] w-[18px] inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> {{ t("nav_new") }}</a>
-    </div>
-  </div>
   <nav class="fixed bottom-0 inset-x-0 z-20 border-t border-ink-700 bg-ink-900/95 backdrop-blur md:hidden pb-[env(safe-area-inset-bottom)]" aria-label="Mobile">
-    <div class="mx-auto max-w-5xl grid grid-cols-3">
+    <div class="mx-auto max-w-5xl grid grid-cols-5">
       <a href="/decks" class="tablink {% if request.url.path.startswith('/decks') %}tablink-active{% endif %}"><span><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>{{ t("nav_decks") }}</a>
-      <button class="tablink {% if request.url.path.startswith('/study') or request.url.path == '/new' %}tablink-active{% endif %}" id="mobile-study-btn" aria-haspopup="dialog" aria-expanded="false"><span><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>{{ t("nav_study") }} <svg class="inline h-2.5 w-2.5" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <a href="/study" class="tablink {% if request.url.path.startswith('/study') %}tablink-active{% endif %}"><span><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>{{ t("nav_study") }}</a>
+      <a href="/new" class="tablink {% if request.url.path == '/new' %}tablink-active{% endif %}" aria-label="{{ t('nav_new') }}"><span class="mx-auto grid h-8 w-8 place-items-center rounded-full text-ink-950 shadow-btn" style="background-image:linear-gradient(180deg,#d9f96e,#c8f04a 55%,#b4e234)"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></a>
       <a href="/stats" class="tablink {% if request.url.path == '/stats' %}tablink-active{% endif %}"><span><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg></span>{{ t("nav_stats") }}</a>
+      <a href="/settings" class="tablink {% if request.url.path == '/settings' %}tablink-active{% endif %}"><span><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.5a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.4 2.4h4l.4-2.4a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg></span>{{ t("nav_settings") }}</a>
     </div>
   </nav>
   {% endif %}
-  <script>
-    (function () {
-      function setExpanded(btn, open) {
-        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-      }
-      var ddBtn = document.getElementById('study-menu-btn');
-      var dd = document.getElementById('study-dd');
-      if (ddBtn && dd) {
-        ddBtn.addEventListener('click', function () {
-          var open = dd.classList.toggle('hidden') === false;
-          setExpanded(ddBtn, open);
-        });
-      }
-      var sheetBtn = document.getElementById('mobile-study-btn');
-      var sheet = document.getElementById('mobile-study-sheet');
-      if (sheetBtn && sheet) {
-        sheetBtn.addEventListener('click', function () {
-          sheet.classList.remove('hidden');
-          setExpanded(sheetBtn, true);
-          var first = sheet.querySelector('a');
-          if (first) first.focus();
-        });
-        sheet.addEventListener('click', function (e) {
-          if (e.target.closest('[data-sheet-close]') || e.target.closest('a')) {
-            sheet.classList.add('hidden');
-            setExpanded(sheetBtn, false);
-          }
-        });
-        sheet.addEventListener('keydown', function (e) {
-          if (e.key === 'Escape') {
-            sheet.classList.add('hidden');
-            setExpanded(sheetBtn, false);
-            sheetBtn.focus();
-          }
-        });
-      }
-      document.addEventListener('click', function (e) {
-        if (dd && ddBtn && !dd.contains(e.target) && !ddBtn.contains(e.target)) {
-          dd.classList.add('hidden');
-          setExpanded(ddBtn, false);
-        }
-      });
-      document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && dd && !dd.classList.contains('hidden')) {
-          dd.classList.add('hidden');
-          setExpanded(ddBtn, false);
-          ddBtn.focus();
-        }
-      });
-    })();
-  </script>
 <script>
   document.addEventListener('submit', function (e) {
     var b = e.target.querySelector('button[type="submit"], button:not([type])');

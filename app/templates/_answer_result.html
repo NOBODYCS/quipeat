@@ -1,20 +1,73 @@
 <div class="mx-auto max-w-2xl" id="card-area" aria-live="polite">
   <div class="rounded-2xl border {% if correct %}border-mint-400/60 bg-mint-400/5{% else %}border-red-800 bg-red-950/40{% endif %} p-6">
-    <div class="flex items-center justify-between mb-3">
-      <span class="font-semibold {% if correct %}text-mint-300{% else %}text-red-300{% endif %}">
-        {% if correct %}{{ t("correct") }}{% else %}{{ t("not_quite") }}{% endif %}
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+      <span class="font-extrabold {% if correct %}text-mint-300{% else %}text-red-300{% endif %}">
+        {% if correct %}{{ t("correct") }} ✓{% else %}{{ t("not_quite") }}{% endif %}
       </span>
-      <span class="text-sm text-volt-300 font-bold">+{{ xp }} XP</span>
+      <span class="flex items-center gap-2">
+        <span class="text-sm text-volt-300 font-bold">+{{ xp }} XP</span>
+        <span id="flag-q-{{ q.id }}">
+          {% if flagged %}
+          <span class="chip chip-flame" role="status">{{ t("flagged_thanks") }}</span>
+          {% else %}
+          <button hx-post="/questions/{{ q.id }}/flag" hx-target="#flag-q-{{ q.id }}" hx-swap="innerHTML"
+                  class="text-xs text-mist-500 hover:text-flame-300 transition" title="{{ t('flag_question') }}" aria-label="{{ t('flag_question') }}">
+            <svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18"/><path d="M5 4h13l-2.5 4L18 12H5"/></svg>
+          </button>
+          {% endif %}
+        </span>
+      </span>
     </div>
-    <p class="text-sm text-mist-300 mb-4">{{ explanation }}</p>
-    {% if award.leveled_up %}<div class="toast" role="status" id="toast-level">🎉 {{ t("toast_level_up") }} {{ award.level }}!</div>{% endif %}
-    {% if badges %}<div class="toast" role="status" id="toast-badge">🏆 {% set names = [] %}{% for b in badges %}{% set _ = names.append(t("badge_" ~ b)) %}{% endfor %}{{ t("toast_badge") }}: {{ names | join(", ") }}</div>{% endif %}
-    <div class="flex gap-2 mt-4">
-      <a href="/study/{{ deck_id }}" class="btn-primary flex-1">{{ t("next_question") }} →</a>
-    </div>
+    <p class="text-sm font-semibold text-white mb-1">{{ q.prompt }}</p>
+    <ul class="mb-4 space-y-1.5 text-sm">
+      {% for opt in q.options %}
+      <li class="rounded-lg border px-3 py-2 {% if loop.index0 == q.correct_index %}border-mint-400/60 bg-mint-400/10 text-mint-200{% elif loop.index0 == choice %}border-red-700 bg-red-950/50 text-red-200{% else %}border-ink-700 bg-ink-900 text-mist-400{% endif %}">
+        <span class="font-bold mr-2">{{ "ABCD"[loop.index0] }})</span>{{ opt }}
+        {% if loop.index0 == q.correct_index %} ✓{% endif %}{% if loop.index0 == choice and not correct %} ✗{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="text-sm text-mist-300 mb-5">{{ q.explanation }}</p>
+    <form hx-post="/study/{{ deck_id }}/rate" hx-target="#card-area" hx-swap="outerHTML"
+          id="rate-form" class="{% if correct %}grid grid-cols-3 gap-2{% endif %}">
+      <input type="hidden" name="question_id" value="{{ q.id }}">
+      <input type="hidden" name="choice" value="{{ choice }}">
+      {% if correct %}
+      <button name="rating" value="hard" class="btn-ghost btn-sm">{{ t("rate_hard") }}</button>
+      <button name="rating" value="good" class="btn-primary btn-sm">{{ t("rate_good") }} →</button>
+      <button name="rating" value="easy" class="btn-ghost btn-sm">{{ t("rate_easy") }}</button>
+      {% else %}
+      <input type="hidden" name="rating" value="again">
+      <button class="btn-primary w-full">{{ t("rate_again") }} →</button>
+      {% endif %}
+    </form>
   </div>
 </div>
 <script>
-  var nx = document.querySelector('#card-area a.btn-primary'); if (nx) nx.focus();
-  document.querySelectorAll('.toast').forEach(function (el) { setTimeout(function () { el.style.transition = 'opacity .5s'; el.style.opacity = '0'; setTimeout(function(){ el.remove(); }, 500); }, 2600); });
+  (function () {
+    var form = document.getElementById('rate-form');
+    if (!form) return;
+    var seconds = 2;
+    var bar = document.createElement('div');
+    bar.style.cssText = 'height:3px;margin-top:10px;border-radius:999px;background:linear-gradient(90deg,#c8f04a,#52eaa8);width:100%';
+    form.appendChild(bar);
+    requestAnimationFrame(function () {
+      bar.style.transition = 'width ' + seconds + 's linear';
+      bar.style.width = '0%';
+    });
+    var done = false;
+    var t = setTimeout(function () {
+      if (!done) { done = true; form.requestSubmit(form.querySelector('button[name="rating"][value="{{ default_rating }}"]') || form.querySelector('button')); }
+    }, seconds * 1000);
+    form.addEventListener('submit', function () { done = true; clearTimeout(t); }, true);
+    form.addEventListener('click', function (e) {
+      if (e.target.closest('button[name="rating"]')) { done = true; clearTimeout(t); }
+    }, true);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !done) {
+        done = true; clearTimeout(t);
+        form.requestSubmit(form.querySelector('button[name="rating"][value="{{ default_rating }}"]') || form.querySelector('button'));
+      }
+    });
+  })();
 </script>

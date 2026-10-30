@@ -5,6 +5,9 @@
   <h1 class="text-2xl font-extrabold">{{ t("decks_title") }}</h1>
   <a href="/new" class="btn-primary shrink-0">{{ t("new_deck") }}</a>
 </div>
+{% if created is defined and created %}
+<div class="toast" role="status" id="toast-created">⚡ {{ t("deck_created_toast") }}</div>
+{% endif %}
 {% if not decks %}
 <div class="card border-dashed p-8">
   <div class="mb-3 flex justify-center text-volt-400"><svg class="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
@@ -24,20 +27,30 @@
 {% else %}
 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
   {% for d in decks %}
-  <a href="/decks/{{ d.id }}" class="card card-hover p-4 relative">
-    <div class="font-semibold mb-1.5 truncate">{{ d.title }}</div>
-    <span class="absolute right-4 top-4 text-mist-500">→</span>
-    <div class="flex flex-wrap gap-1.5 text-xs">
+  <div class="card card-hover p-4">
+    <a href="/decks/{{ d.id }}" class="font-semibold mb-1.5 truncate block hover:text-volt-300">{{ d.title }}</a>
+    <div class="flex flex-wrap gap-1.5 text-xs mb-3">
       <span class="chip">{{ t("source_kind_" ~ d.source_kind) }}</span>
       {% if d.status == 'ready' %}<span class="chip chip-mint">{{ t("status_ready") }}</span>
       {% elif d.status == 'failed' %}<span class="chip chip-red">{{ t("status_failed") }}</span>
       {% elif d.status == 'draft' %}<span class="chip chip-flame">{{ t("status_draft") }}</span>
       {% else %}<span class="chip chip-flame pulse-soft">{{ t("status_generating") }}</span>{% endif %}
       <span class="chip">{{ d.q_count }} {{ t("questions_n") }}</span>
-      {% if d.due_count %}<span class="chip chip-volt">{{ d.due_count }} {{ t("due_n") }}</span>{% endif %}
     </div>
-  </a>
+    {% if d.status == 'ready' %}
+    <a href="/study/{{ d.id }}" class="btn-primary btn-sm w-full">{{ t("nav_study") }}{% if d.due_count %} · {{ d.due_count }} {{ t("due_n") }}{% endif %}</a>
+    {% elif d.status == 'failed' %}
+    <a href="/decks/{{ d.id }}" class="btn-ghost btn-sm w-full">{{ t("view_details") }}</a>
+    {% else %}
+    <a href="/decks/{{ d.id }}" class="btn-ghost btn-sm w-full pulse-soft">{{ t("status_generating") }}</a>
+    {% endif %}
+  </div>
   {% endfor %}
 </div>
+{% endif %}
+{% if created is defined and created %}
+<script>
+  setTimeout(function () { var el = document.getElementById('toast-created'); if (el) { el.style.transition = 'opacity .5s'; el.style.opacity = '0'; setTimeout(function(){ el.remove(); }, 500); } }, 3200);
+</script>
 {% endif %}
 {% endblock %}

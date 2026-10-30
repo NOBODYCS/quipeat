@@ -31,7 +31,7 @@ def _startup():
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
 
 
-def lang_of(user) -> str:
+def lang_of_user(user) -> str:
     if user and "lang" in user.keys() and user["lang"] in LANGS:
         return user["lang"]
     return "en"
@@ -39,6 +39,16 @@ def lang_of(user) -> str:
 
 def current_user(request: Request):
     return get_session_user(request.cookies.get("quipeat_session"))
+
+
+def lang_of(request: Request, user=None) -> str:
+    """Effective UI language: user preference, else the guest lang cookie."""
+    if user is None:
+        user = current_user(request)
+    if user and "lang" in user.keys() and user["lang"] in LANGS:
+        return user["lang"]
+    cookie = request.cookies.get("quipeat_lang")
+    return cookie if cookie in LANGS else "en"
 
 
 def require_user(request: Request):
@@ -60,7 +70,7 @@ async def _redirect_handler(request: Request, exc: _Redirect):
 
 def page(request: Request, template: str, **ctx) -> HTMLResponse:
     user = current_user(request)
-    lang = (user["lang"] if user and "lang" in user.keys() else "en") or "en"
+    lang = lang_of(request, user)
     if lang not in LANGS:
         lang = "en"
     ctx.setdefault("request", request)
@@ -168,13 +178,21 @@ async def onboarding_finish(request: Request, replay: int = Form(0)):
 
 @app.post("/settings/lang")
 async def set_lang(request: Request, lang: str = Form(...)):
-    user = require_user(request)
+    """Switch UI language. Works for guests (cookie) and signed-in users (profile)."""
     if lang not in LANGS:
         lang = "en"
-    db.execute("UPDATE users SET lang = ? WHERE id = ?", (lang, user["id"]))
-    from urllib.parse import quote
-    msg = translate(lang, "language_saved")
-    return RedirectResponse("/settings?msg=" + quote(msg), status_code=303)
+    user = current_user(request)
+    resp = RedirectResponse(request.headers.get("referer") or "/decks", status_code=303)
+    resp.set_cookie("quipeat_lang", lang, max_age=60 * 60 * 24 * 365, samesite="lax")
+    if user:
+        db.execute("UPDATE users SET lang = ? WHERE id = ?", (lang, user["id"]))
+        target = resp.headers["location"]
+        if "msg=" not in target:
+            from urllib.parse import quote
+            target += ("&" if "?" in target else "?") + "msg=" + quote(translate(lang, "language_saved"))
+            resp = RedirectResponse(target, status_code=303)
+            resp.set_cookie("quipeat_lang", lang, max_age=60 * 60 * 24 * 365, samesite="lax")
+    return resp
 
 
 @app.post("/logout")
@@ -190,14 +208,14 @@ async def logout(request: Request):
 # ---------- decks & sources ----------
 
 @app.get("/decks", response_class=HTMLResponse)
-async def decks(request: Request):
+async def decks(request: Request, created: int | None = None):
     user = require_user(request)
     rows = db.query(
         "SELECT d.*, s.kind AS source_kind, (SELECT COUNT(*) FROM questions q WHERE q.deck_id = d.id) AS q_count,"
         " (SELECT COUNT(*) FROM questions q WHERE q.deck_id = d.id AND q.due_at <= datetime('now')) AS due_count"
         " FROM decks d JOIN sources s ON s.id = d.source_id WHERE d.user_id = ? ORDER BY d.created_at DESC",
         (user["id"],))
-    return page(request, "decks.html", decks=rows)
+    return page(request, "decks.html", decks=rows, created=created)
 
 
 @app.get("/new", response_class=HTMLResponse)
@@ -240,9 +258,9 @@ async def new_source(request: Request, title: str = Form(...), url: str = Form("
             key = key[2:]
         else:
             key = "err_generic"
-        return page(request, "new_source.html", error=translate(lang_of(user), key))
+        return page(request, "new_source.html", error=translate(lang_of(request, user), key))
     if not raw.strip():
-        return page(request, "new_source.html", error=translate(lang_of(user), "err_no_text"))
+        return page(request, "new_source.html", error=translate(lang_of(request, user), "err_no_text"))
     if not title:
         title = (ref or "Untitled")[:80]
     cur = db.execute("INSERT INTO sources(user_id, kind, title, original_ref, raw_text) VALUES (?, ?, ?, ?, ?)",
@@ -254,7 +272,7 @@ async def new_source(request: Request, title: str = Form(...), url: str = Form("
                      (user["id"], source_id, title, lang))
     deck_id = cur.lastrowid
     job_id = start_generation(user["id"], deck_id)
-    return RedirectResponse(f"/decks/{deck_id}?job={job_id}", status_code=303)
+    return RedirectResponse(f"/decks?created={deck_id}", status_code=303)
 
 
 @app.get("/decks/{deck_id}", response_class=HTMLResponse)
@@ -328,27 +346,39 @@ async def study_session(request: Request, deck_id: int):
 @app.post("/study/{deck_id}/answer")
 async def study_answer(request: Request, deck_id: int, question_id: int = Form(...),
                        choice: int = Form(...)):
-    """Step 1: user picked an option -> show result + self-rating buttons."""
+    """Show the graded choice. Scheduling happens once, in /rate."""
     user = require_user(request)
     q = db.query_one("SELECT * FROM questions WHERE id = ? AND deck_id = ?", (question_id, deck_id))
     if not q:
         return RedirectResponse(f"/study/{deck_id}", status_code=303)
-    correct = 1 if choice == q["correct_index"] else 0
-    return page(request, "_answer_reveal.html", q={**dict(q), "options": json.loads(q["options_json"])},
-                choice=choice, correct=correct, deck_id=deck_id)
+    is_correct = choice == q["correct_index"]
+    xp_preview = xp_for("good", True, q["difficulty"]) if is_correct else 1
+    return page(request, "_answer_result.html", q={**dict(q), "options": json.loads(q["options_json"])},
+                choice=choice, correct=1 if is_correct else 0, xp=xp_preview, deck_id=deck_id,
+                flagged=bool(q["flagged"]), default_rating="good" if is_correct else "again")
 
 
 @app.post("/study/{deck_id}/rate")
 async def study_rate(request: Request, deck_id: int, question_id: int = Form(...),
                      choice: int = Form(...), rating: str = Form(...)):
-    """Step 2: apply the self-rating, award XP, continue."""
+    """Apply the rating (default good/again), award XP, render the next card or end session."""
     user = require_user(request)
     q = db.query_one("SELECT * FROM questions WHERE id = ? AND deck_id = ?", (question_id, deck_id))
     if not q:
         return RedirectResponse(f"/study/{deck_id}", status_code=303)
-    correct = 1 if choice == q["correct_index"] else 0
-    if not correct:
+    is_correct = choice == q["correct_index"]
+    if rating not in ("hard", "good", "easy") or not is_correct:
+        rating = "again" if not is_correct else "good"
+    return _finish_card(request, user, deck_id, q, choice, is_correct, rating)
+
+
+def _finish_card(request, user, deck_id, q, choice, is_correct, rating=None):
+    """Shared tail of /answer and /rate: schedule, award, render next card or summary."""
+    correct = 1 if is_correct else 0
+    if not is_correct:
         rating = "again"
+    elif rating not in ("hard", "good", "easy"):
+        rating = "good"
     new = grade(dict(q), rating)
     db.execute(
         "UPDATE questions SET due_at=?, interval_days=?, ef=?, reps=?, lapses=? WHERE id=?",
@@ -377,19 +407,51 @@ async def study_rate(request: Request, deck_id: int, question_id: int = Form(...
         "SELECT * FROM questions WHERE deck_id = ? AND due_at <= ? AND id != ? ORDER BY due_at LIMIT 1",
         (deck_id, datetime.now(timezone.utc).isoformat(), q["id"]))
     if nxt:
-        return page(request, "_answer_result.html", correct=correct, xp=xp,
-                    explanation=q["explanation"], options=json.loads(q["options_json"]),
-                    correct_index=q["correct_index"], deck_id=deck_id,
-                    award=award, activity=activity, badges=badges, has_next=True)
+        deck = db.query_one("SELECT * FROM decks WHERE id = ?", (deck_id,))
+        now = datetime.now(timezone.utc).isoformat()
+        due_count = db.query_one(
+            "SELECT COUNT(*) c FROM questions WHERE deck_id = ? AND due_at <= ?", (deck_id, now))["c"]
+        return page(request, "_card_body.html", deck=deck,
+                    q={**dict(nxt), "options": json.loads(nxt["options_json"])},
+                    due_count=due_count, est_min=max(1, round(due_count * 0.4)),
+                    last_correct=bool(correct), last_xp=xp,
+                    award=award, activity=activity, badges=badges)
     sess_row = db.query_one("SELECT * FROM study_sessions WHERE id = ?", (sess_id,))
     db.execute("UPDATE study_sessions SET ended_at = datetime('now') WHERE id = ?", (sess_id,))
     acc = db.query_one("SELECT ROUND(100.0*SUM(correct)/COUNT(*),1) a FROM reviews WHERE user_id=? AND id IN (SELECT id FROM reviews WHERE reviewed_at >= ?)", (user["id"], sess_row["started_at"]))
     deck = db.query_one("SELECT * FROM decks WHERE id = ?", (deck_id,))
     next_due = db.query_one("SELECT MIN(due_at) d FROM questions WHERE deck_id = ? AND due_at > ?",
                             (deck_id, datetime.now(timezone.utc).isoformat()))["d"]
+    if request.headers.get("hx-request"):
+        resp = Response(status_code=200)
+        resp.headers["HX-Redirect"] = f"/study/{deck_id}/done"
+        return resp
     return page(request, "study_summary.html", deck=deck, correct=correct, xp=xp,
                 cards=sess_row["cards_reviewed"], xp_total=sess_row["xp_earned"],
                 accuracy=acc["a"] or 0, award=award, activity=activity, badges=badges,
+                next_due=next_due)
+
+
+@app.get("/study/{deck_id}/done", response_class=HTMLResponse)
+async def study_done(request: Request, deck_id: int):
+    """Session summary page (target of the htmx redirect at session end)."""
+    user = require_user(request)
+    deck = db.query_one("SELECT * FROM decks WHERE id = ? AND user_id = ?", (deck_id, user["id"]))
+    if not deck:
+        return RedirectResponse("/study", status_code=303)
+    sess = db.query_one(
+        "SELECT * FROM study_sessions WHERE user_id = ? AND deck_id = ? ORDER BY started_at DESC LIMIT 1",
+        (user["id"], deck_id))
+    if not sess:
+        return RedirectResponse(f"/study/{deck_id}", status_code=303)
+    acc = db.query_one(
+        "SELECT ROUND(100.0*SUM(correct)/COUNT(*),1) a FROM reviews WHERE user_id=? AND id IN (SELECT id FROM reviews WHERE reviewed_at >= ?)",
+        (user["id"], sess["started_at"]))
+    next_due = db.query_one("SELECT MIN(due_at) d FROM questions WHERE deck_id = ? AND due_at > ?",
+                            (deck_id, datetime.now(timezone.utc).isoformat()))["d"]
+    return page(request, "study_summary.html", deck=deck, correct=1, xp=sess["xp_earned"],
+                cards=sess["cards_reviewed"], xp_total=sess["xp_earned"],
+                accuracy=acc["a"] or 0, award={}, activity={}, badges=[],
                 next_due=next_due)
 
 
@@ -397,6 +459,8 @@ async def study_rate(request: Request, deck_id: int, question_id: int = Form(...
 async def flag_question(request: Request, qid: int):
     user = require_user(request)
     db.execute("UPDATE questions SET flagged = 1 WHERE id = ?", (qid,))
+    if request.headers.get("hx-request"):
+        return HTMLResponse('<span class="chip chip-flame" role="status">' + translate(lang_of(request), "flagged_thanks") + "</span>")
     return RedirectResponse(request.headers.get("referer", "/decks") + ("&" if "?" in request.headers.get("referer","") else "?") + "flagged=1", status_code=303)
 
 
@@ -409,6 +473,17 @@ async def regen_deck(request: Request, deck_id: int):
     db.execute("UPDATE decks SET status='draft' WHERE id = ?", (deck_id,))
     job_id = start_generation(user["id"], deck_id)
     return RedirectResponse(f"/decks/{deck_id}?job={job_id}", status_code=303)
+
+
+@app.post("/decks/{deck_id}/rename")
+async def rename_deck(request: Request, deck_id: int, title: str = Form(...)):
+    user = require_user(request)
+    title = title.strip()
+    deck = db.query_one("SELECT * FROM decks WHERE id = ? AND user_id = ?", (deck_id, user["id"]))
+    if not deck or not title:
+        return RedirectResponse(f"/decks/{deck_id}", status_code=303)
+    db.execute("UPDATE decks SET title = ? WHERE id = ?", (title[:120], deck_id))
+    return RedirectResponse(f"/decks/{deck_id}?msg=1", status_code=303)
 
 
 @app.post("/decks/{deck_id}/delete")

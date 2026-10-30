@@ -19,6 +19,9 @@
   <div class="card p-6">
     <h1 class="text-xl font-extrabold mb-1">{{ t("onb1_t") }}</h1>
     <p class="text-mist-400 text-sm mb-4"><b>⚙ {{ t("nav_settings") }}</b>: {{ t("onb1_b") }}</p>
+    <div class="flex flex-wrap gap-2 mb-3">
+      <a href="/settings" class="btn-primary flex-1">{{ t("open_settings") }}</a>
+    </div>
     <div class="flex gap-2">
       <a href="/onboarding?step=1" class="btn-ghost flex-1">{{ t("back") }}</a>
       <a href="/onboarding?step=3" class="btn-primary flex-1">{{ t("continue") }}</a>
@@ -28,6 +31,9 @@
   <div class="card p-6">
     <h1 class="text-xl font-extrabold mb-1">{{ t("onb2_t") }}</h1>
     <p class="text-mist-400 text-sm mb-4"><b>＋ {{ t("nav_new") }}</b>: {{ t("onb2_b") }}</p>
+    <div class="flex flex-wrap gap-2 mb-3">
+      <a href="/new" class="btn-primary flex-1">{{ t("create_deck_now") }}</a>
+    </div>
     <div class="flex gap-2">
       <a href="/onboarding?step=2" class="btn-ghost flex-1">{{ t("back") }}</a>
       <a href="/onboarding?step=4" class="btn-primary flex-1">{{ t("continue") }}</a>
@@ -45,7 +51,7 @@
     {% else %}
     <p class="text-sm text-mist-400 mb-4">{{ t("onb_last") }}</p>
     <form method="post" action="/onboarding/finish">
-      <button class="btn-primary w-full">{{ t("connect_llm_btn") }}</button>
+      <button class="btn-primary w-full">{{ t("go_to_settings") }}</button>
     </form>
     {% endif %}
   </div>

@@ -32,7 +32,7 @@ def test_register_login_and_full_flow():
     r = client.post("/new", data={"title": "Bio", "topic_text": "Photosynthesis converts light into glucose. " * 60},
                     follow_redirects=False)
     assert r.status_code == 303, r.text[:500]
-    deck_id = int(r.headers["location"].split("/decks/")[1].split("?")[0])
+    deck_id = int(r.headers["location"].split("created=")[1])
 
     import time
     for _ in range(50):
@@ -47,10 +47,11 @@ def test_register_login_and_full_flow():
     q = qs[0]
     r = client.post(f"/study/{deck_id}/answer",
                     data={"question_id": q["id"], "choice": q["correct_index"]})
-    assert r.status_code == 200 and "Easy" in r.text  # step 1: reveal + self-rating
+    assert r.status_code == 200 and "Good" in r.text  # result + continue buttons
+    assert "XP" in r.text and "flag" in r.text  # xp preview + inline flag control
     r = client.post(f"/study/{deck_id}/rate",
                     data={"question_id": q["id"], "choice": q["correct_index"], "rating": "good"})
-    assert r.status_code == 200 and "XP" in r.text
+    assert r.status_code == 200  # grades + returns next card (or session end redirect)
 
     user = db.query_one("SELECT * FROM users WHERE email = 'a@b.c'")
     assert user["xp_total"] > 0

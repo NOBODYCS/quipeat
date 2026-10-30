@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Log in · Quipeat{% endblock %}
 {% block content %}
-<div class="mx-auto max-w-sm mt-8 md:mt-16">
+<div class="relative mx-auto max-w-sm mt-8 md:mt-16">  <div class="absolute top-3 right-3">
+    <form method="post" action="/settings/lang">
+      <input type="hidden" name="lang" value="{{ 'pl' if lang == 'en' else 'en' }}">
+      <button class="iconbtn !h-8 !w-8 !border-0 !bg-transparent text-lg" title="{{ t('site_language') }}" aria-label="{{ t('site_language') }}">{{ '🇵🇱' if lang == 'en' else '🇬🇧' }}</button>
+    </form>
+  </div>
+
   <div class="card p-6 md:p-8">
     <div class="mb-6 flex items-center gap-3">
       <span class="grid h-10 w-10 place-items-center rounded-2xl bg-volt-400 text-xl font-extrabold text-ink-950 shadow-btn">Q</span>
