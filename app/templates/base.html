@@ -20,16 +20,18 @@
         <span class="text-lg font-extrabold tracking-tight text-white hidden sm:block">Quipeat</span>
       </a>
       <nav class="hidden md:flex items-center gap-1 ml-2">
-        <a href="/decks" class="navlink">🗂 {{ t("nav_decks") }}</a>
         <div class="relative" id="study-menu">
-          <button class="navlink" id="study-menu-btn" onclick="document.getElementById('study-dd').classList.toggle('hidden')">🎯 {{ t("nav_study") }} ▾</button>
-          <div id="study-dd" class="hidden absolute left-0 mt-1 w-44 card !p-1.5 z-30">
-            <a href="/study" class="block rounded-lg px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-ink-700">{{ t("pick_deck") }}</a>
-            <a href="/new" class="block rounded-lg px-3 py-2 text-sm font-semibold text-volt-300 hover:bg-ink-700">＋ {{ t("nav_new") }}</a>
+          <button class="navlink !border !border-volt-600/50 !bg-volt-400/10 !text-volt-300" id="study-menu-btn" onclick="document.getElementById('study-dd').classList.toggle('hidden')">
+            🎯 {{ t("nav_study") }}
+            <svg class="inline h-3 w-3" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div id="study-dd" class="hidden absolute left-0 mt-1 w-48 card !p-1.5 z-30">
+            <a href="/study" class="block rounded-lg px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-ink-700">📚 {{ t("pick_deck") }}</a>
+            <a href="/new" class="block rounded-lg px-3 py-2 text-sm font-bold text-volt-300 hover:bg-ink-700">＋ {{ t("nav_new") }}</a>
           </div>
         </div>
+        <a href="/decks" class="navlink">🗂 {{ t("nav_decks") }}</a>
         {% if user.role == 'admin' %}<a href="/admin" class="navlink">🛠 {{ t("nav_admin") }}</a>{% endif %}
-        <a href="/new" class="btn-primary !min-h-0 !py-1.5 !px-3 text-xs ml-1">＋ {{ t("nav_new") }}</a>
       </nav>
       <div class="ml-auto flex items-center gap-1.5">
         {% if user.streak_days > 0 %}<span class="chip hidden sm:inline-flex" title="{{ t('streak') }}">🔥{{ user.streak_days }}</span>{% endif %}
@@ -88,7 +90,6 @@
     {% endif %}
   </div>
   {% if user %}
-  <a href="/new" class="md:hidden fixed bottom-20 right-4 z-30 grid h-14 w-14 place-items-center rounded-2xl bg-volt-400 text-2xl font-extrabold text-ink-950 shadow-btn active:scale-95" title="{{ t('nav_new') }}">＋</a>
   <div id="mobile-study-sheet" class="md:hidden fixed inset-0 z-40 hidden">
     <div class="absolute inset-0 bg-black/60" onclick="document.getElementById('mobile-study-sheet').classList.add('hidden')"></div>
     <div class="absolute bottom-0 inset-x-0 rounded-t-3xl border-t border-ink-700 bg-ink-900 p-4 pb-6">
@@ -101,7 +102,7 @@
   <nav class="fixed bottom-0 inset-x-0 z-20 border-t border-ink-700 bg-ink-900/95 backdrop-blur md:hidden">
     <div class="mx-auto max-w-5xl grid grid-cols-3">
       <a href="/decks" class="tablink {% if request.url.path.startswith('/decks') %}tablink-active{% endif %}"><span>🗂</span>{{ t("nav_decks") }}</a>
-      <button class="tablink {% if request.url.path.startswith('/study') or request.url.path == '/new' %}tablink-active{% endif %}" onclick="document.getElementById('mobile-study-sheet').classList.remove('hidden')"><span>🎯</span>{{ t("nav_study") }} ▾</button>
+      <button class="tablink {% if request.url.path.startswith('/study') or request.url.path == '/new' %}tablink-active{% endif %}" onclick="document.getElementById('mobile-study-sheet').classList.remove('hidden')"><span>🎯</span>{{ t("nav_study") }} <svg class="inline h-2.5 w-2.5" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <a href="/stats" class="tablink {% if request.url.path == '/stats' %}tablink-active{% endif %}"><span>📊</span>{{ t("nav_stats") }}</a>
     </div>
   </nav>
