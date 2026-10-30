@@ -63,6 +63,21 @@ def init_db() -> None:
         qcols = {r["name"] for r in conn.execute("PRAGMA table_info(questions)").fetchall()}
         if "flagged" not in qcols:
             conn.execute("ALTER TABLE questions ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0")
+        if "edited" not in qcols:
+            conn.execute("ALTER TABLE questions ADD COLUMN edited INTEGER NOT NULL DEFAULT 0")
+        if "verify_notes" not in qcols:
+            conn.execute("ALTER TABLE questions ADD COLUMN verify_notes TEXT")
+        jcols = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+        if "mode" not in jcols:
+            conn.execute("ALTER TABLE jobs ADD COLUMN mode TEXT NOT NULL DEFAULT 'replace'")
+        if "stage" not in jcols:
+            conn.execute("ALTER TABLE jobs ADD COLUMN stage TEXT NOT NULL DEFAULT 'queued'")
+        if "generated" not in jcols:
+            conn.execute("ALTER TABLE jobs ADD COLUMN generated INTEGER NOT NULL DEFAULT 0")
+        if "kept" not in jcols:
+            conn.execute("ALTER TABLE jobs ADD COLUMN kept INTEGER NOT NULL DEFAULT 0")
+        if "dropped" not in jcols:
+            conn.execute("ALTER TABLE jobs ADD COLUMN dropped INTEGER NOT NULL DEFAULT 0")
         dcols = {r["name"] for r in conn.execute("PRAGMA table_info(decks)").fetchall()}
         if "lang" not in dcols:
             conn.execute("ALTER TABLE decks ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'")

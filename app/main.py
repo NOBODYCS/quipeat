@@ -620,8 +620,12 @@ async def flag_question(request: Request, qid: int):
 
 
 @app.post("/decks/{deck_id}/regen")
-async def regen_deck(request: Request, deck_id: int):
+async def regen_deck(request: Request, deck_id: int, mode: str = Form("replace")):
+    """mode=replace (default): delete all questions and regenerate from scratch.
+    mode=add: keep existing questions; the job dedups new drafts against them."""
     user = require_user(request)
+    if mode not in ("replace", "add"):
+        mode = "replace"
     deck = db.query_one(
         "SELECT d.*, s.kind AS source_kind, s.raw_text FROM decks d"
         " JOIN sources s ON s.id = d.source_id WHERE d.id = ? AND d.user_id = ?",
@@ -632,7 +636,8 @@ async def regen_deck(request: Request, deck_id: int):
         "SELECT 1 FROM jobs WHERE deck_id = ? AND status IN ('queued','running')", (deck_id,))
     if active:
         return RedirectResponse(f"/decks/{deck_id}", status_code=303)
-    db.execute("DELETE FROM questions WHERE deck_id = ?", (deck_id,))
+    if mode == "replace":
+        db.execute("DELETE FROM questions WHERE deck_id = ?", (deck_id,))
     db.execute("DELETE FROM chunks WHERE source_id = ?", (deck["source_id"],))
     # URL decks re-crawl in the job. File/text decks have no crawler: re-chunk
     # from the stored raw_text, otherwise regen yields zero chunks/questions.
@@ -641,8 +646,8 @@ async def regen_deck(request: Request, deck_id: int):
             db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)",
                        (deck["source_id"], idx, piece))
     db.execute("UPDATE decks SET status='draft' WHERE id = ?", (deck_id,))
-    job_id = start_generation(user["id"], deck_id)
-    log.info("deck %s regen (user=%s), job %s started", deck_id, user["id"], job_id)
+    job_id = start_generation(user["id"], deck_id, mode=mode)
+    log.info("deck %s regen mode=%s (user=%s), job %s started", deck_id, mode, user["id"], job_id)
     return RedirectResponse(f"/decks/{deck_id}?job={job_id}", status_code=303)
 
 

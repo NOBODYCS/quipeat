@@ -959,3 +959,49 @@ def test_normalize_options_never_placeholders_never_stale_correct():
     # placeholder-looking real strings are kept only if 4 distinct
     q = _normalize_options(QuestionDraft(prompt="P?", options=["X", "Y", "Z", "W"], correct_index=3))
     assert q is not None and q.correct_index == 3 and not any("Distractor" in o for o in q.options)
+
+
+def test_regen_modes_and_cross_run_dedup():
+    """F3/P0-2/P0-3: replace wipes old questions; add-mode dedups against existing
+    (normalized prompt and option set), so nothing near-identical is inserted."""
+    from app.generation import _is_duplicate, _normalize_text, _option_set_key
+    # dedup helpers: paraphrase + diacritics + option set
+    seen_p, seen_o = ["What is the powerhouse of the cell?"], set()
+    assert _is_duplicate("What is the powerhouse of the cell??", ["a","b","c","d"], seen_p, seen_o)
+    assert _is_duplicate("Powerhouse of the cell — what is it?", ["a","b","c","d"], seen_p, seen_o)
+    assert _is_duplicate("Co jest elektrownią komórki?", ["a","b","c","d"],
+                         ["Co jest elektrownią komórki?"], set())
+    key = _option_set_key(["ATP", "Glucose", "Water", "Oxygen"])
+    assert _is_duplicate("unrelated prompt", ["oxygen", "water", "glucose", "atp"], [], {key})
+    assert not _is_duplicate("Totally different", ["1","2","3","4"], seen_p, seen_o)
+
+    c, deck_id, q = _register_and_deck("regen@example.com")
+    n0 = db.query_one("SELECT COUNT(*) c FROM questions WHERE deck_id=?", (deck_id,))["c"]
+    # mode=add keeps old questions and job mode is recorded
+    r = csrf_post(c, f"/decks/{deck_id}/regen", data={"mode": "add"}, follow_redirects=False)
+    assert r.status_code == 303
+    import time
+    for _ in range(80):
+        job = db.query_one("SELECT * FROM jobs WHERE deck_id=? ORDER BY rowid DESC LIMIT 1", (deck_id,))
+        if job and job["status"] in ("done", "failed"): break
+        time.sleep(0.25)
+    assert job["status"] == "done", job["error"]
+    assert job["mode"] == "add"
+    n1 = db.query_one("SELECT COUNT(*) c FROM questions WHERE deck_id=?", (deck_id,))["c"]
+    assert n1 >= n0  # nothing deleted
+    # no duplicate normalized prompts in the deck
+    prompts = [r["prompt"] for r in db.query("SELECT prompt FROM questions WHERE deck_id=?", (deck_id,))]
+    norms = [_normalize_text(p) for p in prompts]
+    for i in range(len(norms)):
+        for j in range(i + 1, len(norms)):
+            assert not (norms[i] and norms[j] and norms[i] == norms[j]), "duplicate prompt survived"
+    # mode=replace wipes
+    r = csrf_post(c, f"/decks/{deck_id}/regen", data={"mode": "replace"}, follow_redirects=False)
+    assert r.status_code == 303
+    for _ in range(80):
+        job = db.query_one("SELECT * FROM jobs WHERE deck_id=? ORDER BY rowid DESC LIMIT 1", (deck_id,))
+        if job and job["status"] in ("done", "failed"): break
+        time.sleep(0.25)
+    assert job["status"] == "done" and job["mode"] == "replace"
+    n2 = db.query_one("SELECT COUNT(*) c FROM questions WHERE deck_id=?", (deck_id,))["c"]
+    assert n2 > 0 and n2 <= n1  # regenerated fresh, old ones gone

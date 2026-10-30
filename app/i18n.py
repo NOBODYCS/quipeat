@@ -45,7 +45,7 @@ STRINGS = {
         "confirm_logout": "Log out?", "deck_created_toast": "Deck created — questions are generating in the background",
         "view_details": "View details", "deck_settings": "Deck settings", "rename_deck": "Rename",
         "confirm_regen": "Regenerate all questions for this deck? This replaces the current ones.",
-        "confirm_delete_key": "Delete this API key?", "show_streaks": "Show streaks",
+        "regen_replace": "Regenerate (replace all)", "regen_add": "Add more questions", "confirm_regen_add": "Keep existing questions and add more?",        "confirm_delete_key": "Delete this API key?", "show_streaks": "Show streaks",
         "open_settings": "Open Settings", "create_deck_now": "Create a deck now", "go_to_settings": "Go to Settings",
 
         "status_draft": "Draft", "status_generating": "Generating…", "status_ready": "Ready", "status_failed": "Failed",
@@ -136,7 +136,7 @@ STRINGS = {
         "confirm_logout": "Wylogować?", "deck_created_toast": "Talia utworzona — pytania generują się w tle",
         "view_details": "Zobacz szczegóły", "deck_settings": "Ustawienia talii", "rename_deck": "Zmień nazwę",
         "confirm_regen": "Wygenerować pytania ponownie? Zastąpi obecne.",
-        "confirm_delete_key": "Usunąć ten klucz API?", "show_streaks": "Pokaż passy",
+        "regen_replace": "Wygeneruj od nowa (zastąp wszystkie)", "regen_add": "Dodaj więcej pytań", "confirm_regen_add": "Zachować istniejące pytania i dodać kolejne?",        "confirm_delete_key": "Usunąć ten klucz API?", "show_streaks": "Pokaż passy",
         "open_settings": "Otwórz Ustawienia", "create_deck_now": "Utwórz talię teraz", "go_to_settings": "Przejdź do Ustawień",
 
         "status_draft": "Szkic", "status_generating": "Generowanie…", "status_ready": "Gotowe", "status_failed": "Nieudane",

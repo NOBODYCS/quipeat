@@ -177,6 +177,34 @@ def _similarity(a: str, b: str) -> float:
     return len(ta & tb) / len(ta | tb)
 
 
+def _normalize_text(text: str) -> set[str]:
+    """Canonical token set for dedup: lowercase, diacritics folded, punctuation
+    stripped, stopwords removed. Catches paraphrases and diacritic variants."""
+    import unicodedata
+    folded = unicodedata.normalize("NFKD", text.lower())
+    folded = "".join(c for c in folded if not unicodedata.combining(c))
+    return {w for w in re.findall(r"[^\W_]+", folded, re.UNICODE)
+            if len(w) > 2 and w not in _STOPWORDS}
+
+
+def _similarity_norm(a: str, b: str) -> float:
+    ta, tb = _normalize_text(a), _normalize_text(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
+def _option_set_key(options) -> str:
+    return "|".join(sorted(_normalize_text(o).__str__() for o in options)) if options else ""
+
+
+def _is_duplicate(prompt: str, options, seen_prompts, seen_option_sets, threshold: float = 0.8) -> bool:
+    if any(_similarity_norm(prompt, s) > threshold for s in seen_prompts):
+        return True
+    key = _option_set_key(options)
+    return bool(key) and key in seen_option_sets
+
+
 LANG_NAMES = {"en": "English", "pl": "Polish (polski)"}
 
 _STOPWORDS = {
@@ -361,7 +389,17 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
             chunks = deduped
             log.info("[job %s] sampled %s chunks from %s survivors",
                      job_id, len(chunks), len(pool))
+        # Cross-run dedup for regen mode=add: seed the dedup set with the
+        # deck's existing questions (normalized prompt + option set) so "Add
+        # more" never re-inserts a near-duplicate. Edited questions are also
+        # seeded, so user edits always survive.
         seen_prompts: list[str] = []
+        seen_option_sets: set[str] = set()
+        job_mode = (db.query_one("SELECT mode FROM jobs WHERE id = ?", (job_id,)) or {"mode": "replace"})["mode"]
+        if job_mode == "add":
+            for old in db.query("SELECT prompt, options_json FROM questions WHERE deck_id = ?", (deck_id,)):
+                seen_prompts.append(old["prompt"])
+                seen_option_sets.add(_option_set_key(json.loads(old["options_json"])))
         for chunk in chunks:
             log.info("[job %s] chunk %s: drafting (%s words)", job_id, chunk["idx"],
                      len(chunk["text"].split()))
@@ -393,8 +431,8 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
                     log.info("[job %s] chunk %s: dropped draft with <4 distinct options or "
                              "unidentifiable correct option: %r", job_id, chunk["idx"], draft.prompt[:80])
                     continue
-                if any(_similarity(q.prompt, s) > 0.85 for s in seen_prompts):
-                    log.info("[job %s] chunk %s: skipped duplicate prompt %r",
+                if _is_duplicate(q.prompt, q.options, seen_prompts, seen_option_sets):
+                    log.info("[job %s] chunk %s: skipped duplicate prompt/options %r",
                              job_id, chunk["idx"], q.prompt[:80])
                     continue
                 candidates.append(q)
@@ -452,6 +490,7 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
                      q.explanation, q.difficulty, model, PROMPT_VERSION, score),
                 )
                 seen_prompts.append(q.prompt)
+                seen_option_sets.add(_option_set_key(q.options))
             if reached_target:
                 break
             db.execute("UPDATE jobs SET done=done+1 WHERE id=?", (job_id,))
@@ -508,8 +547,9 @@ def recover_stuck_jobs() -> None:
         log.warning("startup recovery: marked %s interrupted job(s) failed", len(stuck))
 
 
-def start_generation(user_id: int, deck_id: int) -> str:
+def start_generation(user_id: int, deck_id: int, mode: str = "replace") -> str:
     job_id = uuid.uuid4().hex
-    db.execute("INSERT INTO jobs(id, user_id, deck_id) VALUES (?, ?, ?)", (job_id, user_id, deck_id))
+    db.execute("INSERT INTO jobs(id, user_id, deck_id, mode) VALUES (?, ?, ?, ?)",
+               (job_id, user_id, deck_id, mode))
     _get_executor().submit(generate_deck_questions, user_id, deck_id, job_id)
     return job_id
