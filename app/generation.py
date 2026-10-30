@@ -166,6 +166,8 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
         seen_prompts: list[str] = []
         for chunk in chunks:
             user_msg = (
+                f"TOPIC: The user wants a quiz about: {deck['title']}. This text is one excerpt"
+                f" from the source of truth for that topic.\n\n"
                 f"Source text:\n\"\"\"\n{chunk['text']}\n\"\"\"\n\n"
                 f"Generate {questions_per_chunk} multiple-choice questions from the source text above."
                 + cfg["difficulty_hint"] + _lang_instruction(gen_lang)
@@ -213,8 +215,12 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
                 seen_prompts.append(q.prompt)
             db.execute("UPDATE jobs SET done=done+1 WHERE id=?", (job_id,))
             time.sleep(0.05)
-        db.execute("UPDATE jobs SET status='done', finished_at=datetime('now'), message='Generation complete' WHERE id=?",
-                   (job_id,))
+        inserted = db.query_one("SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))["n"]
+        msg = "Generation complete" if inserted else (
+            "Generation complete, but the source contained little substantive content"
+            " about the topic — try a more specific link or paste the text directly.")
+        db.execute("UPDATE jobs SET status='done', finished_at=datetime('now'), message=? WHERE id=?",
+                   (msg, job_id))
         db.execute("UPDATE decks SET status='ready' WHERE id=?", (deck_id,))
     except Exception as e:
         ulang = (db.query_one("SELECT lang FROM users WHERE id = ?", (user_id,)) or {"lang": "en"})["lang"]

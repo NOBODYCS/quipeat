@@ -270,3 +270,39 @@ def test_url_extraction_crawl4ai_challenge_raises(monkeypatch):
         raise AssertionError("expected IngestError")
     except ingest.IngestError as e:
         assert str(e) == "__err_challenge"
+
+
+def test_generation_prompt_is_topic_aware():
+    """The LLM must receive the deck title as TOPIC so it can judge relevance."""
+    import time
+
+    from app.llm.mock import MockProvider
+
+    sent = {}
+
+    class SpyProvider(MockProvider):
+        def chat(self, model, system, user, **kw):
+            sent.setdefault("system", system)
+            sent.setdefault("user", user)
+            return super().chat(model, system, user, **kw)
+
+    from app import generation
+    orig = generation._get_provider
+    generation._get_provider = lambda user_id: (SpyProvider(), "mock-model")
+    try:
+        r = client.post("/new", data={"title": "Ansible fundamentals",
+                                      "topic_text": "Ansible playbooks run tasks in order. " * 60},
+                        follow_redirects=False)
+        assert r.status_code == 303
+        deck_id = int(r.headers["location"].split("/decks/")[1].split("?")[0])
+        job = None
+        for _ in range(50):
+            job = db.query_one("SELECT * FROM jobs WHERE deck_id = ?", (deck_id,))
+            if job and job["status"] in ("done", "failed"):
+                break
+            time.sleep(0.2)
+        assert job["status"] == "done"
+        assert "TOPIC: The user wants a quiz about: Ansible fundamentals" in sent["user"]
+        assert "Topic relevance" in sent["system"]
+    finally:
+        generation._get_provider = orig
