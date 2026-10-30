@@ -5,8 +5,11 @@ from pathlib import Path
 
 from .config import settings
 
-_lock = threading.RLock()
-_conn: sqlite3.Connection | None = None
+# One connection per thread: SQLite connections are not safe to share across
+# threads, and WAL mode lets threads read concurrently while writers serialize
+# at the DB level. All access goes through _local; no global lock needed.
+_local = threading.local()
+_init_lock = threading.Lock()
 
 
 def now_utc() -> str:
@@ -15,21 +18,27 @@ def now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _open() -> sqlite3.Connection:
+    Path(settings.database_path).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(settings.database_path, check_same_thread=True, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=30000")
+    return conn
+
+
 def get_conn() -> sqlite3.Connection:
-    global _conn
-    with _lock:
-        if _conn is None:
-            Path(settings.database_path).parent.mkdir(parents=True, exist_ok=True)
-            _conn = sqlite3.connect(settings.database_path, check_same_thread=False)
-            _conn.row_factory = sqlite3.Row
-            _conn.execute("PRAGMA journal_mode=WAL")
-            _conn.execute("PRAGMA foreign_keys=ON")
-        return _conn
+    conn = getattr(_local, "conn", None)
+    if conn is None:
+        conn = _open()
+        _local.conn = conn
+    return conn
 
 
 def init_db() -> None:
     schema = Path(__file__).parent / "schema.sql"
-    with _lock:
+    with _init_lock:
         conn = get_conn()
         conn.executescript(schema.read_text())
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
@@ -84,17 +93,15 @@ def _ensure_admin(conn: sqlite3.Connection) -> None:
 
 
 def query(sql: str, params: tuple = ()) -> list[sqlite3.Row]:
-    with _lock:
-        return get_conn().execute(sql, params).fetchall()
+    return get_conn().execute(sql, params).fetchall()
 
 
 def query_one(sql: str, params: tuple = ()) -> sqlite3.Row | None:
-    with _lock:
-        return get_conn().execute(sql, params).fetchone()
+    return get_conn().execute(sql, params).fetchone()
 
 
 def execute(sql: str, params: tuple = ()) -> sqlite3.Cursor:
-    with _lock:
-        cur = get_conn().execute(sql, params)
-        get_conn().commit()
-        return cur
+    conn = get_conn()
+    cur = conn.execute(sql, params)
+    conn.commit()
+    return cur
