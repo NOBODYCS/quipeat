@@ -150,3 +150,5 @@ CREATE INDEX IF NOT EXISTS idx_questions_deck ON questions(deck_id);
 CREATE INDEX IF NOT EXISTS idx_questions_due ON questions(deck_id, due_at);
 CREATE INDEX IF NOT EXISTS idx_reviews_question ON reviews(question_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_user ON reviews(user_id);
+
+ALTER TABLE users ADD COLUMN onboarded_at TEXT;

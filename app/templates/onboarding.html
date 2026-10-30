@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Welcome · Quipeat{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-lg">
+  <div class="flex gap-1.5 mb-6">
+    {% for i in range(1, total_steps + 1) %}
+    <div class="h-1.5 flex-1 rounded-full {% if i <= step %}bg-volt-400{% else %}bg-ink-700{% endif %}"></div>
+    {% endfor %}
+  </div>
+
+  {% if step == 1 %}
+  <div class="card p-6 text-center">
+    <div class="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-3xl bg-volt-400 text-3xl font-extrabold text-ink-950 shadow-btn">Q</div>
+    <h1 class="text-2xl font-extrabold mb-2">Welcome to Quipeat</h1>
+    <p class="text-slate-400 mb-6">Turn any document, link, or topic into a quiz deck — then drill it until you actually remember it.</p>
+    <a href="/onboarding?step=2" class="btn-primary w-full">Get started →</a>
+  </div>
+  {% elif step == 2 %}
+  <div class="card p-6">
+    <h1 class="text-xl font-extrabold mb-1">1 · Connect your LLM</h1>
+    <p class="text-slate-400 text-sm mb-4">Quipeat never uses a built-in key. Go to <b>⚙ Settings</b> and paste your own API key — OpenRouter (one key, any model) or Mistral Studio. It's stored encrypted, and you pick the model per deck generation.</p>
+    <div class="flex gap-2">
+      <a href="/onboarding?step=1" class="btn-ghost flex-1">← Back</a>
+      <a href="/onboarding?step=3" class="btn-primary flex-1">Continue →</a>
+    </div>
+  </div>
+  {% elif step == 3 %}
+  <div class="card p-6">
+    <h1 class="text-xl font-extrabold mb-1">2 · Feed it a source</h1>
+    <p class="text-slate-400 text-sm mb-4"><b>＋ New</b> lets you upload a PDF/DOCX/TXT/MD, paste a link to an article, or paste raw text. The app chunks it and drafts multiple-choice questions in the background — every question is verified against the source text, so no made-up answers.</p>
+    <div class="flex gap-2">
+      <a href="/onboarding?step=2" class="btn-ghost flex-1">← Back</a>
+      <a href="/onboarding?step=4" class="btn-primary flex-1">Continue →</a>
+    </div>
+  </div>
+  {% else %}
+  <div class="card p-6">
+    <h1 class="text-xl font-extrabold mb-1">3 · Study & level up</h1>
+    <p class="text-slate-400 text-sm mb-4"><b>🎯 Study</b> shows cards that are due. Answer and the app schedules the next review (spaced repetition). Correct answers earn <b class="text-volt-300">XP</b>, streaks keep you honest, and badges mark milestones.</p>
+    <form method="post" action="/onboarding/finish">
+      <button class="btn-primary w-full">Build my first deck</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Stats · Quipeat{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-bold mb-6">Your progress</h1>
+<h1 class="text-2xl font-semibold mb-6">Your progress</h1>
 <div class="grid gap-4 sm:grid-cols-4 mb-8">
-  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-bold">{{ user.level }}</div><div class="text-xs text-slate-400">Level</div></div>
-  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-bold">{{ user.xp_total }}</div><div class="text-xs text-slate-400">Total XP</div></div>
-  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-bold">{{ user.streak_days }} 🔥</div><div class="text-xs text-slate-400">Day streak</div></div>
-  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-bold">{{ accuracy }}%</div><div class="text-xs text-slate-400">Accuracy ({{ total_r }} reviews, {{ total_q }} cards)</div></div>
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-semibold">{{ user.level }}</div><div class="text-xs text-slate-400">Level</div></div>
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-semibold">{{ user.xp_total }}</div><div class="text-xs text-slate-400">Total XP</div></div>
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-semibold">{{ user.streak_days }} 🔥</div><div class="text-xs text-slate-400">Day streak</div></div>
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4"><div class="text-2xl font-semibold">{{ accuracy }}%</div><div class="text-xs text-slate-400">Accuracy ({{ total_r }} reviews, {{ total_q }} cards)</div></div>
 </div>
 <h2 class="text-lg font-semibold mb-3">Badges</h2>
 <div class="flex flex-wrap gap-2 mb-8">

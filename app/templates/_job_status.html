@@ -1,11 +1,11 @@
 <div id="job-status" {% if job.status not in ('done','failed') %}hx-get="/decks/{{ deck_id }}/job-status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}
-     class="mb-6 rounded-xl border border-slate-800 bg-slate-900 p-4">
+     class="card mb-6 p-4">
   <div class="flex justify-between text-sm mb-2">
-    <span class="font-medium">{% if job.status == 'running' %}Generating questions…{% elif job.status == 'queued' %}Queued…{% elif job.status == 'done' %}Generation complete{% else %}Generation failed{% endif %}</span>
-    <span class="text-slate-400">{{ job.done }}/{{ job.total }}</span>
+    <span class="font-semibold">{% if job.status == 'running' %}⚡ Generating questions…{% elif job.status == 'queued' %}Queued…{% elif job.status == 'done' %}✅ Generation complete{% else %}❌ Generation failed{% endif %}</span>
+    <span class="text-slate-400 tabular-nums">{{ job.done }}/{{ job.total }}</span>
   </div>
-  <div class="h-2 rounded bg-slate-800 overflow-hidden">
-    <div class="h-full bg-emerald-500 transition-all" style="width:{% if job.total %}{{ (job.done / job.total * 100) | round }}{% else %}0{% endif %}%"></div>
+  <div class="h-2.5 rounded-full bg-ink-700 overflow-hidden">
+    <div class="h-full rounded-full bg-volt-400 transition-all" style="width:{% if job.total %}{{ (job.done / job.total * 100) | round }}{% else %}0{% endif %}%"></div>
   </div>
   {% if job.message %}<p class="mt-2 text-xs text-slate-400">{{ job.message }}</p>{% endif %}
   {% if job.error %}<p class="mt-2 text-xs text-red-400">{{ job.error }}</p>{% endif %}

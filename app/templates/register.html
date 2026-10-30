@@ -1,28 +1,32 @@
 {% extends "base.html" %}
 {% block title %}Register · Quipeat{% endblock %}
 {% block content %}
-<div class="mx-auto max-w-sm mt-10">
-  <h1 class="text-2xl font-bold mb-1">Create account</h1>
-  <p class="text-sm text-slate-400 mb-6">Start building quiz decks.</p>
-  {% if error %}<div class="mb-4 rounded-lg bg-red-950/60 border border-red-800 px-4 py-2 text-sm text-red-300">{{ error }}</div>{% endif %}
-  <form method="post" action="/register" class="space-y-4">
-    <div>
-      <label for="display_name" class="block text-sm mb-1">Display name (optional)</label>
-      <input id="display_name" name="display_name" type="text" autocomplete="nickname"
-             class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 focus:border-emerald-500 focus:outline-none">
+<div class="mx-auto max-w-sm mt-8 md:mt-16">
+  <div class="card p-6 md:p-8">
+    <div class="mb-6 flex items-center gap-3">
+      <span class="grid h-10 w-10 place-items-center rounded-2xl bg-volt-400 text-xl font-extrabold text-ink-950 shadow-btn">Q</span>
+      <div>
+        <h1 class="text-xl font-extrabold">Create account</h1>
+        <p class="text-xs text-slate-400">Start building quiz decks.</p>
+      </div>
     </div>
-    <div>
-      <label for="email" class="block text-sm mb-1">Email</label>
-      <input id="email" name="email" type="email" autocomplete="username" required
-             class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 focus:border-emerald-500 focus:outline-none">
-    </div>
-    <div>
-      <label for="password" class="block text-sm mb-1">Password (min 8 chars)</label>
-      <input id="password" name="password" type="password" autocomplete="new-password" required minlength="8"
-             class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 focus:border-emerald-500 focus:outline-none">
-    </div>
-    <button type="submit" class="w-full rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold py-2">Register</button>
-  </form>
-  <p class="mt-4 text-sm text-slate-400">Already have an account? <a href="/login" class="text-emerald-400 hover:underline">Log in</a></p>
+    {% if error %}<div class="alert-error">{{ error }}</div>{% endif %}
+    <form method="post" action="/register" class="space-y-4">
+      <div>
+        <label for="display_name" class="label">Display name (optional)</label>
+        <input id="display_name" name="display_name" type="text" autocomplete="nickname" class="input">
+      </div>
+      <div>
+        <label for="email" class="label">Email</label>
+        <input id="email" name="email" type="email" autocomplete="username" required class="input">
+      </div>
+      <div>
+        <label for="password" class="label">Password (min 8 chars)</label>
+        <input id="password" name="password" type="password" autocomplete="new-password" required minlength="8" class="input">
+      </div>
+      <button type="submit" class="btn-primary w-full">Create account</button>
+    </form>
+    <p class="mt-4 text-sm text-slate-400 text-center">Already have an account? <a href="/login" class="text-volt-300 font-semibold hover:underline">Sign in</a></p>
+  </div>
 </div>
 {% endblock %}

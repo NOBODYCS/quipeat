@@ -84,7 +84,7 @@ async def register(request: Request, email: str = Form(...), password: str = For
                      (email, hash_password(password), display_name.strip()))
     db.execute("INSERT INTO user_settings(user_id) VALUES (?)", (cur.lastrowid,))
     token = create_session(cur.lastrowid)
-    resp = RedirectResponse("/decks", status_code=303)
+    resp = RedirectResponse("/onboarding", status_code=303)
     resp.set_cookie("quipeat_session", token, httponly=True, samesite="lax", max_age=30 * 86400)
     return resp
 
@@ -101,9 +101,25 @@ async def login(request: Request, email: str = Form(...), password: str = Form(.
     if not user or not verify_password(password, user["password_hash"]):
         return page(request, "login.html", error="Invalid email or password.")
     token = create_session(user["id"])
-    resp = RedirectResponse("/decks", status_code=303)
+    resp = RedirectResponse("/onboarding" if not user["onboarded_at"] else "/decks", status_code=303)
     resp.set_cookie("quipeat_session", token, httponly=True, samesite="lax", max_age=30 * 86400)
     return resp
+
+
+@app.get("/onboarding", response_class=HTMLResponse)
+async def onboarding(request: Request, step: int = 1):
+    user = require_user(request)
+    if user["onboarded_at"]:
+        return RedirectResponse("/decks", status_code=303)
+    step = max(1, min(4, step))
+    return page(request, "onboarding.html", step=step, total_steps=4)
+
+
+@app.post("/onboarding/finish")
+async def onboarding_finish(request: Request):
+    user = require_user(request)
+    db.execute("UPDATE users SET onboarded_at = datetime('now') WHERE id = ?", (user["id"],))
+    return RedirectResponse("/decks", status_code=303)
 
 
 @app.post("/logout")
