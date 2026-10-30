@@ -353,6 +353,7 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
                            (deck["source_id"], idx, piece))
             log.info("[job %s] research doc: %s words, %s chunks", job_id,
                      len(raw.split()), len(chunk_text_v2(raw)))
+            db.execute("UPDATE jobs SET stage='generating' WHERE id=?", (job_id,))
         except Exception as e:
             log.error("[job %s] research step failed: %s: %s", job_id, type(e).__name__, e)
             db.execute("UPDATE jobs SET status='failed', error=?, finished_at=datetime('now') WHERE id=?",
@@ -395,6 +396,7 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
             db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)",
                        (deck["source_id"], idx, piece))
         log.info("[job %s] chunked into %s pieces", job_id, len(pieces))
+        db.execute("UPDATE jobs SET stage='generating' WHERE id=?", (job_id,))
 
     chunks = db.query(
         "SELECT * FROM chunks WHERE source_id = ? ORDER BY idx", (deck["source_id"],))

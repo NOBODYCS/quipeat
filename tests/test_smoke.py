@@ -1134,3 +1134,15 @@ def test_chunking_v2_never_cuts_sentences_and_drops_boilerplate():
     ch2 = chunk_text_v2(big, chunk_tokens=40, overlap_tokens=10)
     shared = set(ch2[0].split()) & set(ch2[1].split())
     assert len(shared) > 0, "no overlap between consecutive chunks"
+
+
+def test_job_ui_shows_stage_and_counts():
+    """P1-10: job row has stage + generated/kept/dropped and the status fragment
+    renders them."""
+    c, deck_id, q = _register_and_deck("jobui@example.com")
+    job = db.query_one("SELECT * FROM jobs WHERE deck_id=? ORDER BY rowid DESC LIMIT 1", (deck_id,))
+    assert job["stage"] == "done"
+    assert job["generated"] == job["kept"] + job["dropped"]
+    frag = c.get(f"/decks/{deck_id}/job-status")
+    assert frag.status_code == 200
+    assert "kept" in frag.text and "dropped" in frag.text

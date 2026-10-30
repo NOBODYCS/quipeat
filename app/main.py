@@ -165,7 +165,7 @@ def page(request: Request, template: str, **ctx) -> HTMLResponse:
     ctx.setdefault("langs", LANGS)
     ctx.setdefault("levels", LEVELS)
     ctx.setdefault("default_level", DEFAULT_LEVEL)
-    ctx.setdefault("t", lambda k: translate(lang, k))
+    ctx.setdefault("t", lambda k, **fmt: translate(lang, k, **fmt))
     sess_token = request.cookies.get("quipeat_session")
     ctx.setdefault("csrf", csrf_token(sess_token) if sess_token else "")
     if user:

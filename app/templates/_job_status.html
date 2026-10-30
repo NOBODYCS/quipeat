@@ -1,8 +1,10 @@
 <div id="job-status" {% if job.status not in ('done','failed') %}hx-get="/decks/{{ deck_id }}/job-status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}
      class="card mb-6 p-4">
   <div class="flex justify-between text-sm mb-2">
-    <span class="font-semibold">{% if job.status == 'running' %}⚡ {{ t("gen_running") }}{% elif job.status == 'queued' %}{{ t("gen_queued") }}{% elif job.status == 'done' %}✅ {{ t("gen_done") }}{% else %}❌ {{ t("gen_failed") }}{% endif %}</span>
-    <span class="text-mist-400 tabular-nums">{{ job.done }}/{{ job.total }} {{ t("job_chunks") }} · {{ t("est_time") }}{{ expected_q }} {{ t("gen_est") }}</span>
+    <span class="font-semibold">{% if job.status == 'running' %}⚡ {{ t("gen_running") }}{% elif job.status == 'queued' %}{{ t("gen_queued") }}{% elif job.status == 'done' %}✅ {{ t("gen_done") }}{% else %}❌ {{ t("gen_failed") }}{% endif %}
+      {% if job.stage and job.status == 'running' %}<span class="text-mist-500 font-normal">· {{ t("stage_" ~ job.stage) if job.stage in ('research','chunking','generating','verifying') else job.stage }}</span>{% endif %}
+    </span>
+    <span class="text-mist-400 tabular-nums">{{ job.done }}/{{ job.total }} {{ t("job_chunks") }} · {{ t("gen_stats", generated=job.generated or 0, kept=job.kept or 0, dropped=job.dropped or 0) }}</span>
   </div>
   <div class="h-2.5 rounded-full bg-ink-700 overflow-hidden">
     <div class="h-full rounded-full bg-volt-400 transition-all" style="width:{% if job.total %}{{ (job.done / job.total * 100) | round }}{% else %}0{% endif %}%"></div>
