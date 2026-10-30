@@ -723,3 +723,58 @@ def test_restart_recovery_and_bounded_concurrency():
     assert job2["status"] == "done", job2["error"]
     qs = db.query_one("SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))
     assert qs["n"] > 0
+
+
+def _register_and_deck(email, title="Sec deck"):
+    c = TestClient(app)
+    r = c.post("/register", data={"email": email, "password": "password123",
+                                   "display_name": email.split("@")[0]}, follow_redirects=False)
+    assert r.status_code == 303
+    r = c.post("/new", data={"title": title, "goal": "goal", "topic_text": "Mitochondria produce ATP. " * 60},
+               follow_redirects=False)
+    assert r.status_code == 303, r.text[:300]
+    deck_id = int(r.headers["location"].split("created=")[1])
+    import time
+    for _ in range(60):
+        job = db.query_one("SELECT * FROM jobs WHERE deck_id = ? ORDER BY rowid DESC LIMIT 1", (deck_id,))
+        if job and job["status"] in ("done", "failed"):
+            break
+        time.sleep(0.2)
+    assert job["status"] == "done", job["error"]
+    q = db.query_one("SELECT * FROM questions WHERE deck_id = ? ORDER BY id LIMIT 1", (deck_id,))
+    return c, deck_id, q
+
+
+def test_cross_user_access_denied():
+    """B2: one user must not read, rate, or flag another user's deck/questions."""
+    _, deck_id, q = _register_and_deck("owner@example.com")
+    other = TestClient(app)
+    r = other.post("/register", data={"email": "intruder@example.com", "password": "password123"},
+                   follow_redirects=False)
+    assert r.status_code == 303
+
+    r = other.get(f"/decks/{deck_id}/questions", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/decks"
+    assert "Mitochondria" not in r.text
+
+    r = other.post(f"/study/{deck_id}/answer",
+                   data={"question_id": q["id"], "choice": q["correct_index"]})
+    assert r.status_code == 303
+    r = other.post(f"/study/{deck_id}/rate",
+                   data={"question_id": q["id"], "choice": q["correct_index"], "rating": "easy"})
+    assert r.status_code == 303
+    assert db.query_one("SELECT COUNT(*) c FROM reviews WHERE question_id = ?", (q["id"],))["c"] == 0
+    before = db.query_one("SELECT due_at, reps FROM questions WHERE id = ?", (q["id"],)).copy()
+    r = other.post(f"/questions/{q['id']}/flag", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/decks"
+    assert db.query_one("SELECT flagged FROM questions WHERE id = ?", (q["id"],))["flagged"] == 0
+    after = db.query_one("SELECT due_at, reps FROM questions WHERE id = ?", (q["id"],))
+    assert (after["due_at"], after["reps"]) == (before["due_at"], before["reps"])
+
+
+def test_flag_without_referer_redirects_safely():
+    """B7: flag with no/invalid referer must not produce a relative '?flagged=1' URL."""
+    c, deck_id, q = _register_and_deck("flagger@example.com")
+    r = c.post(f"/questions/{q['id']}/flag", headers={"referer": ""}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith("/")
+    assert db.query_one("SELECT flagged FROM questions WHERE id = ?", (q["id"],))["flagged"] == 1

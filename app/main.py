@@ -83,6 +83,19 @@ def require_user(request: Request):
     return user
 
 
+def owned_deck(user, deck_id: int):
+    """Deck row only if it belongs to this user; None otherwise."""
+    return db.query_one("SELECT * FROM decks WHERE id = ? AND user_id = ?", (deck_id, user["id"]))
+
+
+def owned_question(user, deck_id: int, question_id: int):
+    """Question row only if its deck belongs to this user; None otherwise."""
+    return db.query_one(
+        "SELECT q.* FROM questions q JOIN decks d ON d.id = q.deck_id"
+        " WHERE q.id = ? AND q.deck_id = ? AND d.user_id = ?",
+        (question_id, deck_id, user["id"]))
+
+
 class _Redirect(Exception):
     def __init__(self, location: str):
         self.location = location
@@ -358,9 +371,11 @@ async def job_status(request: Request, deck_id: int):
 @app.get("/decks/{deck_id}/questions", response_class=HTMLResponse)
 async def deck_questions(request: Request, deck_id: int):
     user = require_user(request)
+    deck = owned_deck(user, deck_id)
+    if not deck:
+        return RedirectResponse("/decks", status_code=303)
     qs = db.query("SELECT * FROM questions WHERE deck_id = ? ORDER BY id", (deck_id,))
     items = [{**dict(q), "options": json.loads(q["options_json"])} for q in qs]
-    deck = db.query_one("SELECT * FROM decks WHERE id = ? AND user_id = ?", (deck_id, user["id"]))
     return page(request, "questions.html", questions=items, deck=deck)
 
 
@@ -402,7 +417,7 @@ async def study_answer(request: Request, deck_id: int, question_id: int = Form(.
                        choice: int = Form(...)):
     """Show the graded choice. Scheduling happens once, in /rate."""
     user = require_user(request)
-    q = db.query_one("SELECT * FROM questions WHERE id = ? AND deck_id = ?", (question_id, deck_id))
+    q = owned_question(user, deck_id, question_id)
     if not q:
         return RedirectResponse(f"/study/{deck_id}", status_code=303)
     is_correct = choice == q["correct_index"]
@@ -417,7 +432,7 @@ async def study_rate(request: Request, deck_id: int, question_id: int = Form(...
                      choice: int = Form(...), rating: str = Form(...)):
     """Apply the rating (default good/again), award XP, render the next card or end session."""
     user = require_user(request)
-    q = db.query_one("SELECT * FROM questions WHERE id = ? AND deck_id = ?", (question_id, deck_id))
+    q = owned_question(user, deck_id, question_id)
     if not q:
         return RedirectResponse(f"/study/{deck_id}", status_code=303)
     is_correct = choice == q["correct_index"]
@@ -512,10 +527,18 @@ async def study_done(request: Request, deck_id: int):
 @app.post("/questions/{qid}/flag")
 async def flag_question(request: Request, qid: int):
     user = require_user(request)
+    row = db.query_one(
+        "SELECT q.id, q.deck_id FROM questions q JOIN decks d ON d.id = q.deck_id"
+        " WHERE q.id = ? AND d.user_id = ?", (qid, user["id"]))
+    if not row:
+        return RedirectResponse("/decks", status_code=303)
     db.execute("UPDATE questions SET flagged = 1 WHERE id = ?", (qid,))
     if request.headers.get("hx-request"):
         return HTMLResponse('<span class="chip chip-flame" role="status">' + translate(lang_of(request), "flagged_thanks") + "</span>")
-    return RedirectResponse(request.headers.get("referer", "/decks") + ("&" if "?" in request.headers.get("referer","") else "?") + "flagged=1", status_code=303)
+    referer = request.headers.get("referer") or ""
+    if not referer.startswith("/"):
+        referer = "/decks"
+    return RedirectResponse(referer + ("&" if "?" in referer else "?") + "flagged=1", status_code=303)
 
 
 @app.post("/decks/{deck_id}/regen")
