@@ -23,7 +23,12 @@ def get_conn() -> sqlite3.Connection:
 def init_db() -> None:
     schema = Path(__file__).parent / "schema.sql"
     with _lock:
-        get_conn().executescript(schema.read_text())
+        conn = get_conn()
+        conn.executescript(schema.read_text())
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if "onboarded_at" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN onboarded_at TEXT")
+        conn.commit()
 
 
 def query(sql: str, params: tuple = ()) -> list[sqlite3.Row]:
