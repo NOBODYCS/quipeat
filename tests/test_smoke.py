@@ -99,7 +99,7 @@ def test_levels_config():
     assert DEFAULT_LEVEL in LEVELS
     for cfg in LEVELS.values():
         assert cfg["questions_per_chunk"] >= 1
-        assert cfg["max_questions"] >= cfg["questions_per_chunk"]
+        assert cfg["target_questions"] >= cfg["questions_per_chunk"]
         assert cfg["max_pages"] >= 1
         assert cfg["difficulty_hint"]
 
@@ -151,3 +151,66 @@ def test_new_source_saves_level():
 
     r = client.get(f"/decks/{deck_id}/job-status")
     assert r.status_code == 200
+
+
+def test_url_source_crawls_in_background(monkeypatch):
+    import time
+    from app import ingest
+
+    client.post("/register", data={"email": "url1@b.c", "password": "password123",
+                                   "display_name": "U1"}, follow_redirects=False)
+
+    page = ("<html><body>" + ("Background crawl content. " * 50) +
+            '<a href="/p2">two</a></body></html>')
+    page2 = "<html><body>" + ("Crawled second page. " * 50) + "</body></html>"
+
+    def fake_fetch(url):
+        return page if "p2" not in url else page2
+
+    monkeypatch.setattr(ingest, "_fetch", fake_fetch)
+
+    r = client.post("/new", data={"title": "Url", "url": "https://example.com/",
+                                  "level": "standard"}, follow_redirects=False)
+    assert r.status_code == 303
+    deck_id = int(r.headers["location"].split("/decks/")[1].split("?")[0])
+
+    job = None
+    for _ in range(50):
+        job = db.query_one("SELECT * FROM jobs WHERE deck_id = ?", (deck_id,))
+        if job and job["status"] in ("done", "failed"):
+            break
+        time.sleep(0.2)
+    assert job["status"] == "done"
+    src = db.query_one("SELECT raw_text FROM sources WHERE id = "
+                       "(SELECT source_id FROM decks WHERE id = ?)", (deck_id,))
+    assert "Background crawl content" in src["raw_text"]
+    assert "Crawled second page" in src["raw_text"]
+
+
+def test_url_source_challenge_fails_job(monkeypatch):
+    import time
+    from app import ingest
+
+    client.post("/register", data={"email": "url2@b.c", "password": "password123",
+                                   "display_name": "U2"}, follow_redirects=False)
+
+    def fake_fetch(url):
+        return "<html><title>Just a moment...</title><body>Enable JavaScript and cookies</body></html>"
+
+    monkeypatch.setattr(ingest, "_fetch", fake_fetch)
+
+    r = client.post("/new", data={"title": "Blk", "url": "https://example.com/",
+                                  "level": "standard"}, follow_redirects=False)
+    assert r.status_code == 303
+    deck_id = int(r.headers["location"].split("/decks/")[1].split("?")[0])
+
+    job = None
+    for _ in range(50):
+        job = db.query_one("SELECT * FROM jobs WHERE deck_id = ?", (deck_id,))
+        if job and job["status"] in ("done", "failed"):
+            break
+        time.sleep(0.2)
+    assert job["status"] == "failed"
+    assert "blocks automated readers" in job["error"]
+    deck = db.query_one("SELECT status FROM decks WHERE id = ?", (deck_id,))
+    assert deck["status"] == "failed"

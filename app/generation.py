@@ -13,6 +13,7 @@ from .llm.providers import make_provider
 from .llm.structured import structured_call
 from .security import decrypt_secret
 from .i18n import translate
+from .ingest import extract_text_from_url, chunk_text
 
 PROMPT_VERSION = "v1"
 MIN_VERIFY_SCORE = 0.7
@@ -107,14 +108,57 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
     """Runs as a background thread: for every chunk, draft questions, verify each
     against its chunk, dedup, and insert passing ones. Progress is tracked in jobs."""
     job = db.query_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
-    deck = db.query_one("SELECT * FROM decks WHERE id = ?", (deck_id,))
+    deck = db.query_one(
+        "SELECT d.*, s.kind AS source_kind, s.original_ref FROM decks d"
+        " JOIN sources s ON s.id = d.source_id WHERE d.id = ?", (deck_id,))
     gen_lang = deck["lang"] if "lang" in deck.keys() and deck["lang"] in LANG_NAMES else "en"
     level = deck["level"] if "level" in deck.keys() and deck["level"] in LEVELS else DEFAULT_LEVEL
     cfg = LEVELS[level]
     questions_per_chunk = cfg["questions_per_chunk"]
-    max_questions = cfg["max_questions"]
+    target_questions = cfg["target_questions"]
+
+    # URL sources: crawl now (in the background), store text + chunks.
+    # The POST returned immediately; the job bar polls for progress.
+    if deck["source_kind"] == "url":
+        db.execute("UPDATE jobs SET status='running', total=0, started_at=datetime('now'),"
+                   " message='Fetching and reading the link…' WHERE id=?", (job_id,))
+        try:
+            raw = extract_text_from_url(deck["original_ref"], max_pages=cfg["max_pages"])
+        except Exception as e:
+            ulang = (db.query_one("SELECT lang FROM users WHERE id = ?", (user_id,)) or {"lang": "en"})["lang"]
+            key = str(e)
+            msg = translate(ulang, key[2:]) if key.startswith("__") else str(e)[:200]
+            db.execute("UPDATE jobs SET status='failed', error=?, finished_at=datetime('now') WHERE id=?",
+                       (msg, job_id))
+            db.execute("UPDATE decks SET status='failed' WHERE id=?", (deck_id,))
+            return
+        if not raw.strip():
+            db.execute("UPDATE jobs SET status='failed', error='No readable text found at this link.',"
+                       " finished_at=datetime('now') WHERE id=?", (job_id,))
+            db.execute("UPDATE decks SET status='failed' WHERE id=?", (deck_id,))
+            return
+        db.execute("UPDATE sources SET raw_text=? WHERE id=?", (raw, deck["source_id"]))
+        for idx, piece in enumerate(chunk_text(raw)):
+            db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)",
+                       (deck["source_id"], idx, piece))
+
     chunks = db.query(
         "SELECT * FROM chunks WHERE source_id = ? ORDER BY idx", (deck["source_id"],))
+
+    # Evenly sample across the source so a big crawl still yields broad
+    # coverage at a bounded cost. Small sources keep every chunk.
+    needed = max(1, -(-target_questions // questions_per_chunk))
+    if len(chunks) > needed:
+        step = len(chunks) / needed
+        chunks = [chunks[min(len(chunks) - 1, int(i * step))] for i in range(needed)]
+        seen_idx = set()
+        deduped = []
+        for c in chunks:
+            if c["id"] not in seen_idx:
+                seen_idx.add(c["id"])
+                deduped.append(c)
+        chunks = deduped
+
     try:
         provider, model = _get_provider(user_id)
         db.execute("UPDATE jobs SET status='running', total=?, started_at=datetime('now') WHERE id=?",
@@ -155,9 +199,9 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
                     continue
                 inserted = db.query_one(
                     "SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))["n"]
-                if inserted >= max_questions:
+                if inserted >= target_questions:
                     db.execute("UPDATE jobs SET done=done+1, message=? WHERE id=?",
-                               (f"Question cap reached ({max_questions}); skipping remaining chunks.", job_id))
+                               (f"Target reached ({target_questions} questions).", job_id))
                     break
                 db.execute(
                     "INSERT INTO questions(deck_id, chunk_id, prompt, options_json, correct_index,"

@@ -184,6 +184,20 @@ async def logout(request: Request):
 
 # ---------- decks & sources ----------
 
+def _expected_questions(deck_id: int) -> int:
+    """Honest estimate for the job bar: the level target, capped by what the
+    source's chunks can actually yield (target for URL decks still crawling)."""
+    deck = db.query_one("SELECT source_id, level FROM decks WHERE id = ?", (deck_id,))
+    if not deck:
+        return 0
+    level = deck["level"] if deck["level"] in LEVELS else DEFAULT_LEVEL
+    cfg = LEVELS[level]
+    n_chunks = db.query_one("SELECT COUNT(*) AS n FROM chunks WHERE source_id = ?",
+                            (deck["source_id"],))["n"]
+    if n_chunks:
+        return min(cfg["target_questions"], n_chunks * cfg["questions_per_chunk"])
+    return cfg["target_questions"]
+
 @app.get("/decks", response_class=HTMLResponse)
 async def decks(request: Request):
     user = require_user(request)
@@ -225,7 +239,7 @@ async def new_source(request: Request, title: str = Form(...), url: str = Form("
             kind, ref = "file", file.filename
             tmp.unlink(missing_ok=True)
         elif url:
-            raw = extract_text_from_url(url, max_pages=LEVELS[level]["max_pages"])
+            raw = ""
             kind, ref = "url", url
         elif topic_text:
             raw = topic_text
@@ -239,7 +253,7 @@ async def new_source(request: Request, title: str = Form(...), url: str = Form("
         else:
             key = "err_generic"
         return page(request, "new_source.html", error=translate(lang_of(user), key))
-    if not raw.strip():
+    if kind != "url" and not raw.strip():
         return page(request, "new_source.html", error=translate(lang_of(user), "err_no_text"))
     if not title:
         title = (ref or "Untitled")[:80]
@@ -267,9 +281,8 @@ async def deck_detail(request: Request, deck_id: int, job: str | None = None):
     if not deck:
         return RedirectResponse("/decks", status_code=303)
     job_row = db.query_one("SELECT * FROM jobs WHERE id = ? AND user_id = ?", (job, user["id"])) if job else None
-    level = deck["level"] if "level" in deck.keys() and deck["level"] in LEVELS else DEFAULT_LEVEL
     return page(request, "deck_detail.html", deck=deck, job=job_row,
-                q_per_chunk=LEVELS[level]["questions_per_chunk"])
+                expected_q=_expected_questions(deck_id))
 
 
 @app.get("/decks/{deck_id}/job-status", response_class=HTMLResponse)
@@ -280,10 +293,8 @@ async def job_status(request: Request, deck_id: int):
         (deck_id, user["id"]))
     if not job:
         return HTMLResponse("")
-    deck = db.query_one("SELECT level FROM decks WHERE id = ?", (deck_id,))
-    level = deck["level"] if deck and deck["level"] in LEVELS else DEFAULT_LEVEL
     return page(request, "_job_status.html", job=job, deck_id=deck_id,
-                q_per_chunk=LEVELS[level]["questions_per_chunk"])
+                expected_q=_expected_questions(deck_id))
 
 
 @app.get("/decks/{deck_id}/questions", response_class=HTMLResponse)
