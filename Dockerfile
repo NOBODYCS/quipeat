@@ -4,6 +4,7 @@ COPY package.json tailwind.config.js ./
 COPY app/static/css/input.css app/static/css/input.css
 COPY app/templates app/templates
 RUN npm install --no-audit --no-fund && npm run build:css && mkdir -p /out && cp app/static/css/app.css /out/app.css
+# htmx and fonts are vendored (no runtime CDN dependency); only app.css is built here.
 
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
