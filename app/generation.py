@@ -86,10 +86,10 @@ _PROMPTS = {
 
 
 class QuestionDraft(BaseModel):
-    prompt: str
+    prompt: str = Field(min_length=10, max_length=400)
     options: list[str] = Field(min_length=4, max_length=4)
     correct_index: int = Field(ge=0, le=3)
-    explanation: str = ""
+    explanation: str = Field(min_length=10, max_length=600)  # mandatory: no empty explanations
     difficulty: str = "medium"
 
 
@@ -426,10 +426,16 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
                 continue
             candidates = []
             for draft in drafts.questions:
+                if not draft.explanation or not draft.explanation.strip():
+                    log.info("[job %s] chunk %s: dropped draft with empty explanation: %r",
+                             job_id, chunk["idx"], draft.prompt[:80])
+                    db.execute("UPDATE jobs SET dropped=dropped+1 WHERE id=?", (job_id,))
+                    continue
                 q = _normalize_options(draft)
                 if q is None:
                     log.info("[job %s] chunk %s: dropped draft with <4 distinct options or "
                              "unidentifiable correct option: %r", job_id, chunk["idx"], draft.prompt[:80])
+                    db.execute("UPDATE jobs SET dropped=dropped+1 WHERE id=?", (job_id,))
                     continue
                 if _is_duplicate(q.prompt, q.options, seen_prompts, seen_option_sets):
                     log.info("[job %s] chunk %s: skipped duplicate prompt/options %r",
@@ -438,6 +444,7 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
                 candidates.append(q)
 
             scores: dict[int, float] = {}
+            notes_map: dict[int, str] = {}
             if candidates:
                 questions_block = "\n".join(
                     f"Question {i}: {q.prompt}\nOptions: {json.dumps(q.options)}\n"
@@ -456,6 +463,7 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
                         if 0 <= item.index < len(candidates):
                             scores[item.index] = (
                                 item.score if item.verdict == "pass" else 0.0)
+                            notes_map[item.index] = item.notes
                     log.info("[job %s] chunk %s: batch verify: %s/%s passed",
                              job_id, chunk["idx"], len(scores), len(candidates))
                 except Exception as e:
@@ -471,9 +479,12 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
                 return
             for i, q in enumerate(candidates):
                 score = scores.get(i, 0.5)
+                db.execute("UPDATE jobs SET generated=generated+1 WHERE id=?", (job_id,))
                 if score < MIN_VERIFY_SCORE:
-                    log.info("[job %s] chunk %s: rejected by verify (score=%s < %s): %r",
-                             job_id, chunk["idx"], score, MIN_VERIFY_SCORE, q.prompt[:80])
+                    log.info("[job %s] chunk %s: rejected by verify (score=%s < %s): %r | notes: %s",
+                             job_id, chunk["idx"], score, MIN_VERIFY_SCORE, q.prompt[:80],
+                             notes_map.get(i, "")[:150])
+                    db.execute("UPDATE jobs SET dropped=dropped+1 WHERE id=?", (job_id,))
                     continue
                 inserted = db.query_one(
                     "SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))["n"]
@@ -484,11 +495,13 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
                     break
                 db.execute(
                     "INSERT INTO questions(deck_id, chunk_id, prompt, options_json, correct_index,"
-                    " explanation, difficulty, model, prompt_version, verify_score)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " explanation, difficulty, model, prompt_version, verify_score, verify_notes)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (deck_id, chunk["id"], q.prompt, json.dumps(q.options), q.correct_index,
-                     q.explanation, q.difficulty, model, PROMPT_VERSION, score),
+                     q.explanation, q.difficulty, model, PROMPT_VERSION, score,
+                     notes_map.get(i, "")),
                 )
+                db.execute("UPDATE jobs SET kept=kept+1 WHERE id=?", (job_id,))
                 seen_prompts.append(q.prompt)
                 seen_option_sets.add(_option_set_key(q.options))
             if reached_target:

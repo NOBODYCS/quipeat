@@ -936,28 +936,28 @@ def test_normalize_options_never_placeholders_never_stale_correct():
     placeholders are never produced."""
     from app.generation import _normalize_options, QuestionDraft
     # options A,B,A,C with correct=1 ('B') -> distinct [A,B,C] <4 -> drop
-    assert _normalize_options(QuestionDraft(prompt="P?", options=["A", "B", "A", "C"], correct_index=1)) is None
+    assert _normalize_options(QuestionDraft(prompt="Pick the correct answer?", options=["A", "B", "A", "C"], correct_index=1, explanation="Because the source says so.")) is None
     # 4 distinct with a duplicate that is NOT the correct one: A,B,B,C correct=3 ('C') -> [A,B,C] <4 -> None
-    assert _normalize_options(QuestionDraft(prompt="P?", options=["A", "B", "B", "C"], correct_index=3)) is None
+    assert _normalize_options(QuestionDraft(prompt="Pick the correct answer?", options=["A", "B", "B", "C"], correct_index=3, explanation="Because the source says so.")) is None
     # 4 distinct with correct in the middle: A,B,C,D correct=2 ('C') -> unchanged
-    q = _normalize_options(QuestionDraft(prompt="P?", options=["A", "B", "C", "D"], correct_index=2))
+    q = _normalize_options(QuestionDraft(prompt="Pick the correct answer?", options=["A", "B", "C", "D"], correct_index=2, explanation="Because the source says so."))
     assert q is not None and q.options == ["A", "B", "C", "D"] and q.correct_index == 2
     # case-insensitive duplicate of the correct option: A,B,C,c correct=3 -> 'c' dup of 'C' removed,
     # distinct [A,B,C] <4 -> None (correct text 'c' still maps but too few options)
-    assert _normalize_options(QuestionDraft(prompt="P?", options=["A", "B", "C", "c"], correct_index=3)) is None
+    assert _normalize_options(QuestionDraft(prompt="Pick the correct answer?", options=["A", "B", "C", "c"], correct_index=3, explanation="Because the source says so.")) is None
     # remap where dedup shifts the correct index: options [X, A, B, A] correct=2 ('B') -> [X,A,B] <4 -> None
     # and [X, Y, A, A] correct=1 ('Y') -> [X,Y,A] <4 -> None; use 4 distinct + 1 dup via direct model bypass:
     from app.generation import QuestionDraft as QD
-    raw = QD.model_construct(prompt="P?", options=["A", "B", "C", "D", "B"], correct_index=2,
+    raw = QD.model_construct(prompt="Pick the correct answer?", options=["A", "B", "C", "D", "B"], correct_index=2,
                               explanation="e", difficulty="medium")
     q = _normalize_options(raw)
     assert q is not None and q.options == ["A", "B", "C", "D"] and q.correct_index == 2
     # correct option removed as duplicate: A,B,A,C correct=0 ('A') -> [A,B,C] <4 -> None (never clamp)
-    assert _normalize_options(QuestionDraft(prompt="P?", options=["A", "B", "A", "C"], correct_index=0)) is None
+    assert _normalize_options(QuestionDraft(prompt="Pick the correct answer?", options=["A", "B", "A", "C"], correct_index=0, explanation="Because the source says so.")) is None
     # empty options padded before -> placeholders: must now be None
-    assert _normalize_options(QuestionDraft(prompt="P?", options=["A", "", "B", ""], correct_index=0)) is None
+    assert _normalize_options(QuestionDraft(prompt="Pick the correct answer?", options=["A", "", "B", ""], correct_index=0, explanation="Because the source says so.")) is None
     # placeholder-looking real strings are kept only if 4 distinct
-    q = _normalize_options(QuestionDraft(prompt="P?", options=["X", "Y", "Z", "W"], correct_index=3))
+    q = _normalize_options(QuestionDraft(prompt="Pick the correct answer?", options=["X", "Y", "Z", "W"], correct_index=3, explanation="Because the source says so."))
     assert q is not None and q.correct_index == 3 and not any("Distractor" in o for o in q.options)
 
 
@@ -1019,3 +1019,20 @@ def test_v2_prompts_contain_wording_and_clarity_rules():
     for needle in ("length", "convoluted", "double negative", "meta references",
                    "parallelism", "exactly one defensible", "notes"):
         assert needle.lower() in ver.lower(), f"verify_v2 missing: {needle}"
+
+
+def test_explanations_mandatory_and_notes_stored():
+    """F9/F11: no question enters the DB with an empty explanation; verify notes
+    are stored; job counts generated/kept/dropped."""
+    c, deck_id, q = _register_and_deck("expl@example.com")
+    rows = db.query("SELECT explanation, verify_notes FROM questions WHERE deck_id=?", (deck_id,))
+    assert rows and all(r["explanation"].strip() for r in rows), "empty explanation in DB"
+    job = db.query_one("SELECT generated, kept, dropped, mode FROM jobs WHERE deck_id=? ORDER BY rowid DESC LIMIT 1", (deck_id,))
+    assert job["kept"] >= 1 and job["generated"] >= job["kept"]
+    assert job["generated"] == job["kept"] + job["dropped"]
+    # pydantic rejects empty explanation at parse time
+    from app.generation import QuestionDraft
+    import pytest as _pytest
+    with _pytest.raises(Exception):
+        QuestionDraft(prompt="A valid length prompt?", options=["a","b","c","d"],
+                      correct_index=0, explanation="")
