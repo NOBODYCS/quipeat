@@ -39,10 +39,15 @@ class GenerateResponse(BaseModel):
     questions: list[QuestionDraft]
 
 
-class VerifyResponse(BaseModel):
+class VerifyItem(BaseModel):
+    index: int = Field(ge=0)
     verdict: str
     score: float = Field(ge=0.0, le=1.0)
     notes: str = ""
+
+
+class VerifyResponse(BaseModel):
+    results: list[VerifyItem]
 
 
 def _system_prompt(name: str) -> str:
@@ -241,29 +246,44 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
                 db.execute("UPDATE jobs SET done=done+1, message=? WHERE id=?",
                            (f"chunk {chunk['idx']}: generation failed: {str(e)[:200]}", job_id))
                 continue
+            candidates = []
             for draft in drafts.questions:
                 q = _normalize_options(draft)
                 if any(_similarity(q.prompt, s) > 0.85 for s in seen_prompts):
                     log.info("[job %s] chunk %s: skipped duplicate prompt %r",
                              job_id, chunk["idx"], q.prompt[:80])
                     continue
-                verify_msg = (
-                    f"Source text:\n\"\"\"\n{chunk['text']}\n\"\"\"\n\n"
-                    f"Question: {q.prompt}\nOptions: {json.dumps(q.options)}\n"
+                candidates.append(q)
+
+            scores: dict[int, float] = {}
+            if candidates:
+                questions_block = "\n".join(
+                    f"Question {i}: {q.prompt}\nOptions: {json.dumps(q.options)}\n"
                     f"Claimed correct index: {q.correct_index}\n"
                     f"Explanation: {q.explanation}"
+                    for i, q in enumerate(candidates))
+                verify_msg = (
+                    f"Source text:\n\"\"\"\n{chunk['text']}\n\"\"\"\n\n"
+                    f"{questions_block}"
                 )
                 try:
                     verdict, _ = structured_call(provider, model, _system_prompt("verify"),
                                                  verify_msg, VerifyResponse, temperature=0.0,
-                                                 max_tokens=512)
-                    score = verdict.score if verdict.verdict == "pass" else 0.0
-                    log.info("[job %s] chunk %s: verify verdict=%s score=%s",
-                             job_id, chunk["idx"], verdict.verdict, score)
+                                                 max_tokens=1024)
+                    for item in verdict.results:
+                        if 0 <= item.index < len(candidates):
+                            scores[item.index] = (
+                                item.score if item.verdict == "pass" else 0.0)
+                    log.info("[job %s] chunk %s: batch verify: %s/%s passed",
+                             job_id, chunk["idx"], len(scores), len(candidates))
                 except Exception as e:
-                    log.warning("[job %s] chunk %s: verify call failed (%s: %s), assuming 0.5",
+                    log.warning("[job %s] chunk %s: batch verify failed (%s: %s), assuming 0.5",
                                 job_id, chunk["idx"], type(e).__name__, str(e)[:150])
-                    score = 0.5
+                    scores = {i: 0.5 for i in range(len(candidates))}
+
+            reached_target = False
+            for i, q in enumerate(candidates):
+                score = scores.get(i, 0.5)
                 if score < MIN_VERIFY_SCORE:
                     log.info("[job %s] chunk %s: rejected by verify (score=%s < %s): %r",
                              job_id, chunk["idx"], score, MIN_VERIFY_SCORE, q.prompt[:80])
@@ -273,6 +293,7 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
                 if inserted >= target_questions:
                     db.execute("UPDATE jobs SET done=done+1, message=? WHERE id=?",
                                (f"Target reached ({target_questions} questions).", job_id))
+                    reached_target = True
                     break
                 db.execute(
                     "INSERT INTO questions(deck_id, chunk_id, prompt, options_json, correct_index,"
@@ -282,6 +303,8 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
                      q.explanation, q.difficulty, model, PROMPT_VERSION, score),
                 )
                 seen_prompts.append(q.prompt)
+            if reached_target:
+                break
             db.execute("UPDATE jobs SET done=done+1 WHERE id=?", (job_id,))
             time.sleep(0.05)
         inserted = db.query_one("SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))["n"]

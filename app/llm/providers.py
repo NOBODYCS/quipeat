@@ -1,6 +1,13 @@
+import logging
+import time
 from dataclasses import dataclass
 
 import httpx
+
+log = logging.getLogger("quipeat.llm")
+
+RETRYABLE_STATUS = {429, 502, 503, 504}
+MAX_RETRIES = 3
 
 
 @dataclass
@@ -13,6 +20,22 @@ class ChatResult:
 
 class ProviderError(Exception):
     pass
+
+
+def _post_with_retry(post_fn):
+    """Run post_fn() retrying on transient provider errors (429/5xx) with
+    exponential backoff. post_fn returns an httpx.Response."""
+    last = None
+    for attempt in range(MAX_RETRIES):
+        resp = post_fn()
+        if resp.status_code not in RETRYABLE_STATUS:
+            return resp
+        last = resp
+        wait = 2 ** attempt
+        log.warning("provider returned %s (attempt %s/%s), retrying in %ss",
+                    resp.status_code, attempt + 1, MAX_RETRIES, wait)
+        time.sleep(wait)
+    return last
 
 
 class BaseProvider:
@@ -46,12 +69,12 @@ class OpenRouterProvider(BaseProvider):
             }
         try:
             with httpx.Client(timeout=120) as client:
-                resp = client.post(
+                resp = _post_with_retry(lambda: client.post(
                     f"{self.base_url}/chat/completions",
                     headers={"Authorization": f"Bearer {self.api_key}",
                              "Content-Type": "application/json"},
                     json=payload,
-                )
+                ))
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
             raise ProviderError(f"OpenRouter {e.response.status_code}: {e.response.text[:300]}")
@@ -88,12 +111,12 @@ class MistralProvider(BaseProvider):
             }
         try:
             with httpx.Client(timeout=120) as client:
-                resp = client.post(
+                resp = _post_with_retry(lambda: client.post(
                     f"{self.base_url}/chat/completions",
                     headers={"Authorization": f"Bearer {self.api_key}",
                              "Content-Type": "application/json"},
                     json=payload,
-                )
+                ))
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
             raise ProviderError(f"Mistral {e.response.status_code}: {e.response.text[:300]}")

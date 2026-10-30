@@ -374,6 +374,8 @@ def test_mistral_provider_sends_named_json_schema(monkeypatch):
     captured = {}
 
     class FakeResp:
+        status_code = 200
+
         def raise_for_status(self):
             pass
 
@@ -394,3 +396,49 @@ def test_mistral_provider_sends_named_json_schema(monkeypatch):
     assert rf["json_schema"]["name"] == "response"
     assert rf["json_schema"]["strict"] is True
     assert rf["json_schema"]["schema"] == {"type": "object"}
+
+
+def test_provider_retries_transient_errors(monkeypatch):
+    """503 from the provider must be retried, then succeed."""
+    from app.llm import providers
+
+    calls = {"n": 0}
+
+    class Resp:
+        def __init__(self, status):
+            self.status_code = status
+            self.text = ""
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                import httpx
+                raise httpx.HTTPStatusError("err", request=None, response=self)
+
+        def json(self):
+            return {"choices": [{"message": {"content": "{}"}}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+
+    def fake_post(**kw):
+        calls["n"] += 1
+        return Resp(503 if calls["n"] < 3 else 200)
+
+    monkeypatch.setattr(providers.time, "sleep", lambda s: None)
+
+    class FakeClient:
+        def __init__(self, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def post(self, url, **kw):
+            return fake_post(**kw)
+
+    monkeypatch.setattr(providers.httpx, "Client", FakeClient)
+    p = providers.MistralProvider("test-key")
+    result = p.chat("m", "sys", "user", json_schema={"type": "object"})
+    assert calls["n"] == 3
+    assert result.text == "{}"

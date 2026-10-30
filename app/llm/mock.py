@@ -13,8 +13,13 @@ class MockProvider:
              temperature: float = 0.2, max_tokens: int = 4096) -> ChatResult:
         schema_str = json.dumps(json_schema or {})
         if "verdict" in schema_str:
-            payload = {"verdict": "pass", "score": 0.95,
-                       "notes": "Mock verification: answer is supported by the source chunk."}
+            import re
+            n_questions = len(re.findall(r"^Question \d+:", user, re.M))
+            n = n_questions if n_questions else 1
+            payload = {"results": [
+                {"index": i, "verdict": "pass", "score": 0.95,
+                 "notes": "Mock verification: answer is supported by the source chunk."}
+                for i in range(n)]}
         else:
             chunk = user[:80].replace("\n", " ")
             payload = {"questions": [

@@ -498,10 +498,11 @@ async def regen_deck(request: Request, deck_id: int):
     deck = db.query_one("SELECT * FROM decks WHERE id = ? AND user_id = ?", (deck_id, user["id"]))
     if not deck:
         return RedirectResponse("/decks", status_code=303)
+    db.execute("DELETE FROM questions WHERE deck_id = ?", (deck_id,))
+    db.execute("DELETE FROM chunks WHERE source_id = ?", (deck["source_id"],))
     db.execute("UPDATE decks SET status='draft' WHERE id = ?", (deck_id,))
     job_id = start_generation(user["id"], deck_id)
-    log.info("deck %s created (user=%s kind=%s level=%s), job %s started",
-             deck_id, user["id"], kind, level, job_id)
+    log.info("deck %s regen (user=%s), job %s started", deck_id, user["id"], job_id)
     return RedirectResponse(f"/decks/{deck_id}?job={job_id}", status_code=303)
 
 
