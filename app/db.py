@@ -44,6 +44,8 @@ def init_db() -> None:
             conn.execute("ALTER TABLE decks ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'")
         if "level" not in dcols:
             conn.execute("ALTER TABLE decks ADD COLUMN level TEXT NOT NULL DEFAULT 'standard'")
+        if "goal" not in dcols:
+            conn.execute("ALTER TABLE decks ADD COLUMN goal TEXT NOT NULL DEFAULT ''")
         conn.commit()
         _ensure_admin(conn)
         conn.commit()

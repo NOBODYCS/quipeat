@@ -248,12 +248,13 @@ async def new_source_form(request: Request):
 
 
 @app.post("/new")
-async def new_source(request: Request, title: str = Form(...), url: str = Form(""),
-                     topic_text: str = Form(""), lang: str = Form("en"),
-                     level: str = Form(DEFAULT_LEVEL),
+async def new_source(request: Request, title: str = Form(...), goal: str = Form(""),
+                     url: str = Form(""), topic_text: str = Form(""),
+                     lang: str = Form("en"), level: str = Form(DEFAULT_LEVEL),
                      file: UploadFile | None = File(None)):
     user = require_user(request)
     title = title.strip()
+    goal = goal.strip()
     url = url.strip()
     topic_text = topic_text.strip()
     if lang not in LANGS:
@@ -287,6 +288,9 @@ async def new_source(request: Request, title: str = Form(...), url: str = Form("
         return page(request, "new_source.html", error=translate(lang_of(request, user), key))
     if kind != "url" and not raw.strip():
         return page(request, "new_source.html", error=translate(lang_of(request, user), "err_no_text"))
+    if not goal:
+        return page(request, "new_source.html", error=translate(lang_of(request, user), "err_no_goal"),
+                    title=title, goal=goal, url=url, topic_text=topic_text, level=level)
     if not title:
         title = (ref or "Untitled")[:80]
     cur = db.execute("INSERT INTO sources(user_id, kind, title, original_ref, raw_text) VALUES (?, ?, ?, ?, ?)",
@@ -294,8 +298,8 @@ async def new_source(request: Request, title: str = Form(...), url: str = Form("
     source_id = cur.lastrowid
     for idx, piece in enumerate(chunk_text(raw)):
         db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)", (source_id, idx, piece))
-    cur = db.execute("INSERT INTO decks(user_id, source_id, title, lang, level) VALUES (?, ?, ?, ?, ?)",
-                     (user["id"], source_id, title, lang, level))
+    cur = db.execute("INSERT INTO decks(user_id, source_id, title, goal, lang, level) VALUES (?, ?, ?, ?, ?, ?)",
+                     (user["id"], source_id, title, goal, lang, level))
     deck_id = cur.lastrowid
     job_id = start_generation(user["id"], deck_id)
     return RedirectResponse(f"/decks?created={deck_id}", status_code=303)

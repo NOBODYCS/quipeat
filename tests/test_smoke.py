@@ -33,7 +33,7 @@ def test_register_login_and_full_flow():
     r = client.get("/decks")
     assert r.status_code == 200 and "Your decks" in r.text
 
-    r = client.post("/new", data={"title": "Bio", "topic_text": "Photosynthesis converts light into glucose. " * 60},
+    r = client.post("/new", data={"title": "Bio", "goal": "Understand photosynthesis basics", "topic_text": "Photosynthesis converts light into glucose. " * 60},
                     follow_redirects=False)
     assert r.status_code == 303, r.text[:500]
     deck_id = int(r.headers["location"].split("created=")[1])
@@ -147,7 +147,7 @@ def test_url_crawl_concatenates_pages(monkeypatch):
 
 
 def test_new_source_saves_level():
-    r = client.post("/new", data={"title": "Lv", "topic_text": "Kubernetes orchestrates containers. " * 60,
+    r = client.post("/new", data={"title": "Lv", "goal": "Learn Kubernetes orchestration", "topic_text": "Kubernetes orchestrates containers. " * 60,
                                   "level": "thorough"}, follow_redirects=False)
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
@@ -174,7 +174,7 @@ def test_url_source_crawls_in_background(monkeypatch):
 
     monkeypatch.setattr(ingest, "_fetch", fake_fetch)
 
-    r = client.post("/new", data={"title": "Url", "url": "https://example.com/",
+    r = client.post("/new", data={"title": "Url", "goal": "Learn background crawling", "url": "https://example.com/",
                                   "level": "standard"}, follow_redirects=False)
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
@@ -204,7 +204,7 @@ def test_url_source_challenge_fails_job(monkeypatch):
 
     monkeypatch.setattr(ingest, "_fetch", fake_fetch)
 
-    r = client.post("/new", data={"title": "Blk", "url": "https://example.com/",
+    r = client.post("/new", data={"title": "Blk", "goal": "Learn blocked pages handling", "url": "https://example.com/",
                                   "level": "standard"}, follow_redirects=False)
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
@@ -283,15 +283,18 @@ def test_generation_prompt_is_topic_aware():
 
     class SpyProvider(MockProvider):
         def chat(self, model, system, user, **kw):
-            sent.setdefault("system", system)
-            sent.setdefault("user", user)
+            if "quiz writer" in system:
+                sent["system"] = system
+                sent["user"] = user
             return super().chat(model, system, user, **kw)
 
+    client.post("/register", data={"email": "spy@b.c", "password": "password123",
+                                   "display_name": "S"}, follow_redirects=False)
     from app import generation
     orig = generation._get_provider
     generation._get_provider = lambda user_id: (SpyProvider(), "mock-model")
     try:
-        r = client.post("/new", data={"title": "Ansible fundamentals",
+        r = client.post("/new", data={"title": "Ansible fundamentals", "goal": "Run Ansible playbooks",
                                       "topic_text": "Ansible playbooks run tasks in order. " * 60},
                         follow_redirects=False)
         assert r.status_code == 303
@@ -303,8 +306,9 @@ def test_generation_prompt_is_topic_aware():
                 break
             time.sleep(0.2)
         assert job["status"] == "done"
-        assert "TOPIC: The user wants a quiz about: Ansible fundamentals" in sent["user"]
-        assert "Topic relevance" in sent["system"]
+        assert "LEARNING GOAL: The user wants to learn: Run Ansible playbooks" in sent["user"]
+        assert "Learning-goal relevance" in sent["system"]
+        assert "Audience" in sent["system"]
     finally:
         generation._get_provider = orig
 
@@ -333,7 +337,7 @@ def test_triaged_sampling_end_to_end():
               "License: GPLv3. Changelog for release 2.15: minor fixes. ") * 20
 
     big_text = (relevant + " " + filler) * 40
-    r = client.post("/new", data={"title": "Ansible", "topic_text": big_text,
+    r = client.post("/new", data={"title": "Ansible", "goal": "Use Ansible for automation", "topic_text": big_text,
                                   "level": "quick"}, follow_redirects=False)
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
@@ -459,7 +463,7 @@ def test_semantic_triage_drops_non_learning_chunks(monkeypatch):
     mixed = ("Ansible playbooks define tasks in YAML against an inventory. "
              "To contribute a new module, open a pull request following the contributor "
              "path and changelog fragment process. ") * 40
-    r = client.post("/new", data={"title": "Ansible", "topic_text": mixed,
+    r = client.post("/new", data={"title": "Ansible", "goal": "Use Ansible playbooks", "topic_text": mixed,
                                   "level": "quick"}, follow_redirects=False)
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
@@ -476,3 +480,20 @@ def test_semantic_triage_drops_non_learning_chunks(monkeypatch):
     for q in qs:
         assert "contribut" not in q["prompt"].lower()
         assert "changelog" not in q["prompt"].lower()
+
+
+def test_goal_is_required_and_persisted():
+    client.post("/register", data={"email": "goal1@b.c", "password": "password123",
+                                   "display_name": "G1"}, follow_redirects=False)
+    r = client.post("/new", data={"title": "NoGoal", "topic_text": "Some content. " * 60},
+                    follow_redirects=False)
+    assert r.status_code == 200
+    assert "what you want to learn" in r.text.lower()
+
+    r = client.post("/new", data={"title": "WithGoal", "goal": "Master inventory basics",
+                                  "topic_text": "Ansible inventory hosts and groups. " * 60},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    deck_id = int(r.headers["location"].split("created=")[1])
+    deck = db.query_one("SELECT goal FROM decks WHERE id = ?", (deck_id,))
+    assert deck["goal"] == "Master inventory basics"

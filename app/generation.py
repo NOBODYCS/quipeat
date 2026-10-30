@@ -196,8 +196,9 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
         " JOIN sources s ON s.id = d.source_id WHERE d.id = ?", (deck_id,))
     gen_lang = deck["lang"] if "lang" in deck.keys() and deck["lang"] in LANG_NAMES else "en"
     level = deck["level"] if "level" in deck.keys() and deck["level"] in LEVELS else DEFAULT_LEVEL
-    log.info("[job %s] deck=%s title=%r kind=%s level=%s lang=%s",
-             job_id, deck_id, deck["title"], deck["source_kind"], level, gen_lang)
+    goal = deck["goal"] if "goal" in deck.keys() and deck["goal"].strip() else deck["title"]
+    log.info("[job %s] deck=%s title=%r goal=%r kind=%s level=%s lang=%s",
+             job_id, deck_id, deck["title"], goal[:120], deck["source_kind"], level, gen_lang)
     cfg = LEVELS[level]
     questions_per_chunk = cfg["questions_per_chunk"]
     target_questions = cfg["target_questions"]
@@ -245,7 +246,7 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
     log.info("[job %s] %s chunks available, budget=%s chunks (target=%s q, %s q/chunk)",
              job_id, len(chunks), needed, target_questions, questions_per_chunk)
     if len(chunks) > needed:
-        terms = _topic_terms(deck["title"])
+        terms = _topic_terms(goal)
         scored = [(_topic_score(c["text"], terms), i, c) for i, c in enumerate(chunks)]
         top = min(len(chunks), max(needed, needed * 2))
         log.info("[job %s] triage: topic terms=%s, scores min=%.4f max=%.4f mean=%.4f",
@@ -270,7 +271,7 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
         log.info("[job %s] provider=%s model=%s", job_id, provider.name, model)
         db.execute("UPDATE jobs SET status='running', total=?, started_at=datetime('now') WHERE id=?",
                    (len(chunks), job_id))
-        chunks = _semantic_triage(provider, model, deck["title"], chunks, job_id)
+        chunks = _semantic_triage(provider, model, goal, chunks, job_id)
         log.info("[job %s] triage kept %s/%s chunks", job_id, len(chunks),
                  db.query_one("SELECT COUNT(*) AS n FROM chunks WHERE source_id = ?",
                               (deck["source_id"],))["n"])
@@ -280,8 +281,9 @@ def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
             log.info("[job %s] chunk %s: drafting (%s words)", job_id, chunk["idx"],
                      len(chunk["text"].split()))
             user_msg = (
-                f"TOPIC: The user wants a quiz about: {deck['title']}. This text is one excerpt"
-                f" from the source of truth for that topic.\n\n"
+                f"LEARNING GOAL: The user wants to learn: {goal}.\n"
+                f"This text is one excerpt from their chosen source of truth. Generate"
+                f" questions that serve this learning goal.\n\n"
                 f"Source text:\n\"\"\"\n{chunk['text']}\n\"\"\"\n\n"
                 f"Generate {questions_per_chunk} multiple-choice questions from the source text above."
                 + cfg["difficulty_hint"] + _lang_instruction(gen_lang)
