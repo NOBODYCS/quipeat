@@ -584,3 +584,41 @@ def test_admin_panel_shows_diagnostics_and_job_events():
     body = r.json()
     assert body["status"] in ("ok", "degraded")
     assert "database" in body["components"]
+
+
+def test_file_upload_and_topic_decks_generate():
+    """File upload and pasted-topic paths must both create working decks."""
+    import io
+    import time
+
+    client.post("/register", data={"email": "srctest@b.c", "password": "password123",
+                                   "display_name": "ST"}, follow_redirects=False)
+
+    files = {"file": ("notes.txt", io.BytesIO(
+        b"Ansible playbooks automate server configuration with YAML tasks. " * 60), "text/plain")}
+    r = client.post("/new", data={"title": "FileDeck", "goal": "Learn file ingestion",
+                                   "level": "quick"}, files=files, follow_redirects=False)
+    assert r.status_code == 303, r.text[:300]
+    file_deck = int(r.headers["location"].split("created=")[1])
+
+    r = client.post("/new", data={"title": "TopicDeck", "goal": "Learn topic ingestion",
+                                  "topic_text": "Kubernetes pods are scheduled onto nodes. " * 80},
+                    follow_redirects=False)
+    assert r.status_code == 303, r.text[:300]
+    topic_deck = int(r.headers["location"].split("created=")[1])
+
+    outcomes = {}
+    for deck_id in (file_deck, topic_deck):
+        job = None
+        for _ in range(60):
+            job = db.query_one("SELECT * FROM jobs WHERE deck_id = ?", (deck_id,))
+            if job and job["status"] in ("done", "failed"):
+                break
+            time.sleep(0.2)
+        assert job["status"] == "done", (job["status"], job["error"])
+        qs = db.query_one("SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))
+        outcomes[deck_id] = qs["n"]
+        assert qs["n"] > 0, f"deck {deck_id} generated no questions"
+        deck = db.query_one("SELECT status FROM decks WHERE id = ?", (deck_id,))
+        assert deck["status"] == "ready"
+        assert not job["error"]

@@ -12,7 +12,15 @@ class MockProvider:
     def chat(self, model: str, system: str, user: str, *, json_schema: dict | None = None,
              temperature: float = 0.2, max_tokens: int = 4096) -> ChatResult:
         schema_str = json.dumps(json_schema or {})
-        if "verdict" in schema_str:
+        if "is_learning_material" in schema_str:
+            import re
+            n_excerpts = len(re.findall(r"^--- Excerpt \d+ ---", user, re.M))
+            n = n_excerpts if n_excerpts else 1
+            payload = {"verdicts": [
+                {"index": i, "is_learning_material": True,
+                 "reason": "Mock triage: assume learning material."}
+                for i in range(n)]}
+        elif "verdict" in schema_str:
             import re
             n_questions = len(re.findall(r"^Question \d+:", user, re.M))
             n = n_questions if n_questions else 1

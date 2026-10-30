@@ -281,7 +281,9 @@ async def new_source(request: Request, title: str = Form(...), goal: str = Form(
             data = await file.read()
             if len(data) > settings.max_upload_mb * 1024 * 1024:
                 raise IngestError("__err_file_too_big")
-            tmp = Path(settings.upload_dir) / f"{secrets.token_hex(8)}_{file.filename}"
+            upload_dir = Path(settings.upload_dir)
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            tmp = upload_dir / f"{secrets.token_hex(8)}_{file.filename}"
             tmp.write_bytes(data)
             raw = extract_text_from_file(tmp, file.filename)
             kind, ref = "file", file.filename
