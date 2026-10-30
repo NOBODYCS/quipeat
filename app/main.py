@@ -343,7 +343,7 @@ async def decks(request: Request, created: int | None = None):
     user = require_user(request)
     rows = db.query(
         "SELECT d.*, s.kind AS source_kind, (SELECT COUNT(*) FROM questions q WHERE q.deck_id = d.id) AS q_count,"
-        " (SELECT COUNT(*) FROM questions q WHERE q.deck_id = d.id AND q.due_at <= datetime('now')) AS due_count"
+        " (SELECT COUNT(*) FROM questions q WHERE q.deck_id = d.id AND q.due_at <= datetime('now') AND q.flagged = 0) AS due_count"
         " FROM decks d JOIN sources s ON s.id = d.source_id WHERE d.user_id = ? ORDER BY d.created_at DESC",
         (user["id"],))
     return page(request, "decks.html", decks=rows, created=created)
@@ -436,13 +436,21 @@ async def deck_detail(request: Request, deck_id: int, job: str | None = None):
     deck = db.query_one(
         "SELECT d.*, s.kind AS source_kind, s.original_ref, s.title AS source_title,"
         " (SELECT COUNT(*) FROM questions q WHERE q.deck_id = d.id) AS q_count,"
-        " (SELECT COUNT(*) FROM questions q WHERE q.deck_id = d.id AND q.due_at <= datetime('now')) AS due_count"
+        " (SELECT COUNT(*) FROM questions q WHERE q.deck_id = d.id AND q.due_at <= datetime('now') AND q.flagged = 0) AS due_count"
         " FROM decks d JOIN sources s ON s.id = d.source_id WHERE d.id = ? AND d.user_id = ?",
         (deck_id, user["id"]))
     if not deck:
         return RedirectResponse("/decks", status_code=303)
     job_row = db.query_one("SELECT * FROM jobs WHERE id = ? AND user_id = ?", (job, user["id"])) if job else None
-    return page(request, "deck_detail.html", deck=deck, job=job_row,
+    if not job_row and deck["status"] in ("ready", "failed"):
+        job_row = db.query_one(
+            "SELECT * FROM jobs WHERE deck_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1",
+            (deck_id, user["id"]))
+    flagged = db.query(
+        "SELECT q.* FROM questions q WHERE q.deck_id = ? AND q.flagged = 1 ORDER BY q.id",
+        (deck_id,))
+    flagged_items = [{**dict(f), "options": json.loads(f["options_json"])} for f in flagged]
+    return page(request, "deck_detail.html", deck=deck, job=job_row, flagged=flagged_items,
                 expected_q=_expected_questions(deck_id))
 
 
@@ -475,7 +483,7 @@ async def deck_questions(request: Request, deck_id: int):
 async def study_pick(request: Request):
     user = require_user(request)
     decks = db.query(
-        "SELECT d.id, d.title, (SELECT COUNT(*) FROM questions q WHERE q.deck_id = d.id AND q.due_at <= datetime('now')) AS due"
+        "SELECT d.id, d.title, (SELECT COUNT(*) FROM questions q WHERE q.deck_id = d.id AND q.due_at <= datetime('now') AND q.flagged = 0) AS due"
         " FROM decks d WHERE d.user_id = ? AND d.status = 'ready' ORDER BY d.title", (user["id"],))
     return page(request, "study_pick.html", decks=decks)
 
@@ -491,12 +499,12 @@ async def study_session(request: Request, deck_id: int):
         "SELECT COUNT(*) c, MIN(due_at) next_due FROM questions WHERE deck_id = ? AND due_at > ?",
         (deck_id, now))
     q = db.query_one(
-        "SELECT * FROM questions WHERE deck_id = ? AND due_at <= ? ORDER BY due_at LIMIT 1",
+        "SELECT * FROM questions WHERE deck_id = ? AND due_at <= ? AND flagged = 0 ORDER BY due_at LIMIT 1",
         (deck_id, now))
     if not q:
         return page(request, "study_done.html", deck=deck, next_due=due["next_due"])
     due_count = db.query_one(
-        "SELECT COUNT(*) c FROM questions WHERE deck_id = ? AND due_at <= ?", (deck_id, now))["c"]
+        "SELECT COUNT(*) c FROM questions WHERE deck_id = ? AND due_at <= ? AND flagged = 0", (deck_id, now))["c"]
     return page(request, "study_card.html", deck=deck,
                 q={**dict(q), "options": json.loads(q["options_json"])},
                 due_count=due_count, est_min=max(1, round(due_count * 0.4)))
@@ -563,13 +571,13 @@ def _finish_card(request, user, deck_id, q, choice, is_correct, rating=None):
     db.execute("UPDATE study_sessions SET cards_reviewed = cards_reviewed + 1, xp_earned = xp_earned + ? WHERE id = ?",
                (xp, sess_id))
     nxt = db.query_one(
-        "SELECT * FROM questions WHERE deck_id = ? AND due_at <= ? AND id != ? ORDER BY due_at LIMIT 1",
+        "SELECT * FROM questions WHERE deck_id = ? AND due_at <= ? AND flagged = 0 AND id != ? ORDER BY due_at LIMIT 1",
         (deck_id, db.now_utc(), q["id"]))
     if nxt:
         deck = db.query_one("SELECT * FROM decks WHERE id = ?", (deck_id,))
         now = db.now_utc()
         due_count = db.query_one(
-            "SELECT COUNT(*) c FROM questions WHERE deck_id = ? AND due_at <= ?", (deck_id, now))["c"]
+            "SELECT COUNT(*) c FROM questions WHERE deck_id = ? AND due_at <= ? AND flagged = 0", (deck_id, now))["c"]
         return page(request, "_card_body.html", deck=deck,
                     q={**dict(nxt), "options": json.loads(nxt["options_json"])},
                     due_count=due_count, est_min=max(1, round(due_count * 0.4)),
@@ -614,12 +622,16 @@ async def study_done(request: Request, deck_id: int):
                 next_due=next_due)
 
 
+def _owned_question(user, qid: int):
+    return db.query_one(
+        "SELECT q.* FROM questions q JOIN decks d ON d.id = q.deck_id"
+        " WHERE q.id = ? AND d.user_id = ?", (qid, user["id"]))
+
+
 @app.post("/questions/{qid}/flag")
 async def flag_question(request: Request, qid: int):
     user = require_user(request)
-    row = db.query_one(
-        "SELECT q.id, q.deck_id FROM questions q JOIN decks d ON d.id = q.deck_id"
-        " WHERE q.id = ? AND d.user_id = ?", (qid, user["id"]))
+    row = _owned_question(user, qid)
     if not row:
         return RedirectResponse("/decks", status_code=303)
     db.execute("UPDATE questions SET flagged = 1 WHERE id = ?", (qid,))
@@ -629,6 +641,62 @@ async def flag_question(request: Request, qid: int):
     if not referer.startswith("/"):
         referer = "/decks"
     return RedirectResponse(referer + ("&" if "?" in referer else "?") + "flagged=1", status_code=303)
+
+
+@app.post("/questions/{qid}/unflag")
+async def unflag_question(request: Request, qid: int):
+    user = require_user(request)
+    row = _owned_question(user, qid)
+    if not row:
+        return RedirectResponse("/decks", status_code=303)
+    db.execute("UPDATE questions SET flagged = 0 WHERE id = ?", (qid,))
+    return RedirectResponse(f"/decks/{row['deck_id']}?flagged=0", status_code=303)
+
+
+@app.post("/questions/{qid}/delete")
+async def delete_question(request: Request, qid: int):
+    user = require_user(request)
+    row = _owned_question(user, qid)
+    if not row:
+        return RedirectResponse("/decks", status_code=303)
+    db.execute("DELETE FROM questions WHERE id = ?", (qid,))
+    return RedirectResponse(f"/decks/{row['deck_id']}/questions?deleted=1", status_code=303)
+
+
+@app.post("/questions/{qid}/edit")
+async def edit_question(request: Request, qid: int, prompt: str = Form(...),
+                        opt0: str = Form(""), opt1: str = Form(""), opt2: str = Form(""),
+                        opt3: str = Form(""), correct: int = Form(0),
+                        explanation: str = Form("")):
+    """User edits a question. Sets edited=1 so regen 'add' never dedups it away."""
+    user = require_user(request)
+    q = _owned_question(user, qid)
+    if not q:
+        return RedirectResponse("/decks", status_code=303)
+    prompt = prompt.strip()
+    options = [o.strip() for o in (opt0, opt1, opt2, opt3)]
+    if len(prompt) < 10 or not all(options) or len(set(o.lower() for o in options)) < 4:
+        return RedirectResponse(f"/decks/{q['deck_id']}/questions?error=invalid", status_code=303)
+    if not (0 <= correct <= 3):
+        correct = 0
+    db.execute(
+        "UPDATE questions SET prompt=?, options_json=?, correct_index=?, explanation=?, edited=1 WHERE id=?",
+        (prompt[:400], json.dumps(options), correct, explanation.strip()[:600], qid))
+    return RedirectResponse(f"/decks/{q['deck_id']}/questions?edited=1", status_code=303)
+
+
+@app.post("/questions/{qid}/regen")
+async def regen_question(request: Request, qid: int):
+    """Regenerate a single question: re-run generate+verify on its chunk and
+    replace the row (keeps the id stable for review history)."""
+    user = require_user(request)
+    q = _owned_question(user, qid)
+    if not q:
+        return RedirectResponse("/decks", status_code=303)
+    from .generation import regenerate_single_question
+    ok = regenerate_single_question(user["id"], q["deck_id"], qid)
+    return RedirectResponse(
+        f"/decks/{q['deck_id']}/questions?" + ("regen=1" if ok else "regen=0"), status_code=303)
 
 
 @app.post("/decks/{deck_id}/regen")

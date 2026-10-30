@@ -641,6 +641,59 @@ def recover_stuck_jobs() -> None:
         log.warning("startup recovery: marked %s interrupted job(s) failed", len(stuck))
 
 
+def regenerate_single_question(user_id: int, deck_id: int, qid: int) -> bool:
+    """Re-run generate+verify on the question's chunk and replace the row in
+    place. Fail-closed: any failure leaves the original question untouched."""
+    q = db.query_one("SELECT * FROM questions WHERE id = ? AND deck_id = ?", (qid, deck_id))
+    if not q or q["chunk_id"] is None:
+        return False
+    chunk = db.query_one("SELECT * FROM chunks WHERE id = ?", (q["chunk_id"],))
+    if not chunk:
+        return False
+    deck = db.query_one("SELECT * FROM decks WHERE id = ?", (deck_id,))
+    gen_lang = deck["lang"] if deck and "lang" in deck.keys() and deck["lang"] in LANG_NAMES else "en"
+    goal = ((deck["goal"] if deck["goal"].strip() else deck["title"]) if deck else "")
+    try:
+        provider, model = _get_provider(user_id)
+        user_msg = (
+            f"LEARNING GOAL: The user wants to learn: {goal}.\n\n"
+            f"Source text:\n\"\"\"\n{chunk['text']}\n\"\"\"\n\n"
+            f"Generate 1 multiple-choice question from the source text above."
+            + _lang_instruction(gen_lang)
+        )
+        drafts, _ = structured_call(provider, model, _system_prompt("generate"),
+                                     user_msg, GenerateResponse, temperature=0.4, max_tokens=1024)
+        for draft in drafts.questions:
+            if not draft.explanation.strip():
+                continue
+            cand = _normalize_options(draft)
+            if cand is None:
+                continue
+            verify_msg = (
+                f"Source text:\n\"\"\"\n{chunk['text']}\n\"\"\"\n\n"
+                f"Question: {cand.prompt}\nOptions: {json.dumps(cand.options)}\n"
+                f"Claimed correct index: {cand.correct_index}\nExplanation: {cand.explanation}"
+            )
+            verdict, _ = structured_call(provider, model, _system_prompt("verify"),
+                                         verify_msg, VerifyResponse, temperature=0.0, max_tokens=512)
+            item = next((r for r in verdict.results if r.index == 0), None)
+            score = item.score if item and item.verdict == "pass" else 0.0
+            notes = item.notes if item else ""
+            if score < MIN_VERIFY_SCORE:
+                continue
+            db.execute(
+                "UPDATE questions SET prompt=?, options_json=?, correct_index=?, explanation=?,"
+                " difficulty=?, model=?, prompt_version=?, verify_score=?, verify_notes=?,"
+                " due_at=datetime('now'), interval_days=0, ef=2.5, reps=0, lapses=0 WHERE id=?",
+                (cand.prompt, json.dumps(cand.options), cand.correct_index, cand.explanation,
+                 cand.difficulty, model, PROMPT_VERSION, score, notes, qid))
+            return True
+        return False
+    except Exception as e:
+        log.warning("regen single question %s failed: %s: %s", qid, type(e).__name__, str(e)[:150])
+        return False
+
+
 def start_generation(user_id: int, deck_id: int, mode: str = "replace") -> str:
     job_id = uuid.uuid4().hex
     db.execute("INSERT INTO jobs(id, user_id, deck_id, mode) VALUES (?, ?, ?, ?)",

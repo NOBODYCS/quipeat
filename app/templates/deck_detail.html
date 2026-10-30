@@ -21,6 +21,12 @@
 </div>
 {% elif job %}
   {% include "_job_status.html" %}
+  {% if job.status == 'done' and job.kept is not none %}
+  <div class="card p-4 mb-6 flex flex-wrap items-center gap-3">
+    <span class="text-sm">{{ t("result_summary", kept=job.kept or 0, dropped=job.dropped or 0, generated=job.generated or 0) }}</span>
+    <a href="/decks/{{ deck.id }}/questions" class="btn-primary btn-sm ml-auto">{{ t("review_questions") }} →</a>
+  </div>
+  {% endif %}
 {% endif %}
 <div class="flex flex-wrap gap-3 mb-6">
   {% if deck.status == 'ready' %}
@@ -28,6 +34,21 @@
   {% endif %}
   <a href="/decks/{{ deck.id }}/questions" class="btn-ghost">{{ t("review_questions") }}</a>
 </div>
+{% if flagged %}
+<div class="card p-5 mb-6 border-red-900/60">
+  <h2 class="text-sm font-extrabold text-red-300 mb-3">🚩 {{ t("flagged_section") }} ({{ flagged | length }})</h2>
+  {% for q in flagged %}
+  <div class="border-t border-ink-750 pt-3 mt-3 first:border-0 first:pt-0 first:mt-0">
+    <p class="text-sm font-semibold">{{ q.prompt }}</p>
+    <div class="mt-2 flex flex-wrap gap-2">
+      <a href="/decks/{{ deck.id }}/questions#q-{{ q.id }}" class="text-xs text-volt-300 hover:underline">{{ t("edit_question") }}</a>
+      <form method="post" action="/questions/{{ q.id }}/unflag"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="text-xs text-mist-400 hover:text-white">{{ t("unflag") }}</button></form>
+      <form method="post" action="/questions/{{ q.id }}/delete" onsubmit="return confirm('{{ t("confirm_delete_q") }}')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="text-xs text-red-400 hover:text-red-300">{{ t("delete") }}</button></form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 <div class="card p-5">
   <h2 class="text-sm font-extrabold text-white mb-3">{{ t("deck_settings") }}</h2>
   <form method="post" action="/decks/{{ deck.id }}/rename" class="flex flex-wrap gap-2 mb-4">

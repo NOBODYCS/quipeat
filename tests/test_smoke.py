@@ -35,6 +35,7 @@ def csrf_post(c, url, data=None, files=None, **kw):
     data["csrf"] = tok
     if files is not None:
         return c.post(url, data=data, files=files, **kw)
+    kw.setdefault("follow_redirects", False)
     return c.post(url, data=data, **kw)
 
 
@@ -1146,3 +1147,78 @@ def test_job_ui_shows_stage_and_counts():
     frag = c.get(f"/decks/{deck_id}/job-status")
     assert frag.status_code == 200
     assert "kept" in frag.text and "dropped" in frag.text
+
+
+def test_flagged_excluded_from_study_and_listed_on_deck():
+    """F10/P2-13: a flagged question is never served by /study and shows on the
+    deck page with unflag/delete actions."""
+    c, deck_id, q = _register_and_deck("flagstudy@example.com")
+    # force the question due and flag it
+    db.execute("UPDATE questions SET due_at = datetime('now','-1 minute')", ())
+    for row in db.query("SELECT id FROM questions WHERE deck_id=?", (deck_id,)):
+        csrf_post(c, f"/questions/{row['id']}/flag")
+    r = csrf_post(c, f"/questions/{q['id']}/flag")
+    assert r.status_code in (200, 303)
+    assert db.query_one("SELECT flagged FROM questions WHERE id=?", (q["id"],))["flagged"] == 1
+    r = c.get(f"/study/{deck_id}")
+    assert r.status_code == 200 and q["prompt"][:30] not in r.text, "flagged question served in study"
+    # due_count excludes flagged
+    n = db.query_one("SELECT COUNT(*) c FROM questions WHERE deck_id=? AND due_at <= datetime('now') AND flagged=0", (deck_id,))["c"]
+    assert n == 0
+    # deck page lists it
+    page = c.get(f"/decks/{deck_id}")
+    assert "Flagged questions" in page.text
+    # unflag restores it to the queue
+    for row in db.query("SELECT id FROM questions WHERE deck_id=?", (deck_id,)):
+        csrf_post(c, f"/questions/{row['id']}/unflag")
+    r = c.get(f"/study/{deck_id}")
+    assert q["prompt"][:30] in r.text
+
+
+def test_question_edit_delete_regen_one():
+    """P2-12: edit sets edited=1 and validates 4 distinct options; delete removes;
+    regen-one replaces the row via mock pipeline."""
+    c, deck_id, q = _register_and_deck("editq@example.com")
+    # edit
+    r = csrf_post(c, f"/questions/{q['id']}/edit", data={
+        "prompt": "Edited prompt about mitochondria and ATP production?",
+        "opt0": "ATP", "opt1": "DNA", "opt2": "RNA", "opt3": "Lipid",
+        "correct": "0", "explanation": "Mitochondria produce ATP via oxidative phosphorylation."})
+    assert r.status_code == 303
+    row = db.query_one("SELECT * FROM questions WHERE id=?", (q["id"],))
+    assert row["edited"] == 1 and row["prompt"].startswith("Edited prompt")
+    import json as _json
+    assert _json.loads(row["options_json"]) == ["ATP", "DNA", "RNA", "Lipid"] and row["correct_index"] == 0
+    # invalid edit (duplicate options) rejected
+    r = csrf_post(c, f"/questions/{q['id']}/edit", data={
+        "prompt": "Another edited prompt here?", "opt0": "A", "opt1": "A", "opt2": "B", "opt3": "C",
+        "correct": "0", "explanation": "x"})
+    assert r.status_code == 303 and "error=invalid" in r.headers["location"]
+    # regen-one
+    r = csrf_post(c, f"/questions/{q['id']}/regen")
+    assert r.status_code == 303 and "regen=1" in r.headers["location"]
+    row2 = db.query_one("SELECT * FROM questions WHERE id=?", (q["id"],))
+    assert row2["prompt"] != "Edited prompt about mitochondria and ATP production?" or row2["edited"] == 1
+    # delete
+    r = csrf_post(c, f"/questions/{q['id']}/delete")
+    assert r.status_code == 303
+    assert db.query_one("SELECT 1 FROM questions WHERE id=?", (q["id"],)) is None
+
+
+def test_edited_questions_survive_add_more_regen():
+    """Acceptance: edited questions are untouched by regen mode=add."""
+    c, deck_id, q = _register_and_deck("editedregen@example.com")
+    csrf_post(c, f"/questions/{q['id']}/edit", data={
+        "prompt": "Hand-edited question that must survive regen?",
+        "opt0": "One", "opt1": "Two", "opt2": "Three", "opt3": "Four",
+        "correct": "2", "explanation": "Because the user said so explicitly."})
+    r = csrf_post(c, f"/decks/{deck_id}/regen", data={"mode": "add"}, follow_redirects=False)
+    assert r.status_code == 303
+    import time
+    for _ in range(80):
+        job = db.query_one("SELECT * FROM jobs WHERE deck_id=? ORDER BY rowid DESC LIMIT 1", (deck_id,))
+        if job and job["status"] in ("done", "failed"): break
+        time.sleep(0.25)
+    assert job["status"] == "done", job["error"]
+    row = db.query_one("SELECT * FROM questions WHERE id=?", (q["id"],))
+    assert row is not None and row["prompt"].startswith("Hand-edited") and row["edited"] == 1

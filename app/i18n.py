@@ -82,7 +82,9 @@ STRINGS = {
         "freeze_used": "Streak freeze used — your streak is safe today", "freeze_avail": "Streak freeze available",
         "hide_streaks": "Hide streaks", "flag_question": "Report this question", "flagged_thanks": "Thanks — flagged for review",
         "regen": "Regenerate questions", "delete_deck": "Delete deck", "confirm_delete": "Delete this deck and all its questions?",
-        "gen_est": "expected questions", "gen_stats": "generated {generated} · kept {kept} · dropped {dropped}", "stage_research": "writing research document", "stage_chunking": "chunking source", "stage_generating": "generating", "stage_verifying": "verifying", "verifying": "verifying", "drafting": "drafting", "chunk_of": "chunk",
+        "gen_est": "expected questions",
+        "result_summary": "{kept} questions created ({dropped} dropped of {generated} generated).", "flagged_section": "Flagged questions (hidden from study)", "edit_question": "Edit", "unflag": "Unflag", "confirm_delete_q": "Delete this question?", "regen_one_tip": "Regenerate this question", "edited_chip": "edited", "correct_answer": "Correct answer", "explanation": "Explanation",
+ "gen_stats": "generated {generated} · kept {kept} · dropped {dropped}", "stage_research": "writing research document", "stage_chunking": "chunking source", "stage_generating": "generating", "stage_verifying": "verifying", "verifying": "verifying", "drafting": "drafting", "chunk_of": "chunk",
         "due_in_h": "h", "due_in_m": "m", "study_start_due": "cards due", "est_time": "≈",
 
         "pick_deck": "Study a deck", "no_badges_yet": "No badges yet — study to earn them!",
@@ -174,7 +176,9 @@ STRINGS = {
         "freeze_used": "Zamrożenie passy użyte — Twoja passa jest dziś bezpieczna", "freeze_avail": "Dostępne zamrożenie passy",
         "hide_streaks": "Ukryj passy", "flag_question": "Zgłoś to pytanie", "flagged_thanks": "Dzięki — pytanie oznaczone do przeglądu",
         "regen": "Wygeneruj pytania ponownie", "delete_deck": "Usuń talię", "confirm_delete": "Usunąć tę talię i wszystkie jej pytania?",
-        "gen_est": "oczekiwanych pytań", "gen_stats": "wygenerowano {generated} · zachowano {kept} · odrzucono {dropped}", "stage_research": "pisanie dokumentu badawczego", "stage_chunking": "dzielenie źródła", "stage_generating": "generowanie", "stage_verifying": "weryfikacja", "verifying": "weryfikacja", "drafting": "tworzenie", "chunk_of": "fragment",
+        "gen_est": "oczekiwanych pytań",
+        "result_summary": "Utworzono {kept} pytań ({dropped} odrzucono z {generated} wygenerowanych).", "flagged_section": "Oflagowane pytania (ukryte podczas nauki)", "edit_question": "Edytuj", "unflag": "Odlaguj", "confirm_delete_q": "Usunąć to pytanie?", "regen_one_tip": "Wygeneruj to pytanie ponownie", "edited_chip": "edytowane", "correct_answer": "Poprawna odpowiedź", "explanation": "Wyjaśnienie",
+ "gen_stats": "wygenerowano {generated} · zachowano {kept} · odrzucono {dropped}", "stage_research": "pisanie dokumentu badawczego", "stage_chunking": "dzielenie źródła", "stage_generating": "generowanie", "stage_verifying": "weryfikacja", "verifying": "weryfikacja", "drafting": "tworzenie", "chunk_of": "fragment",
         "due_in_h": "godz.", "due_in_m": "min", "study_start_due": "kart do powtórki", "est_time": "≈",
 
         "pick_deck": "Ucz się talii", "no_badges_yet": "Brak odznak — ucz się, aby je zdobyć!",
