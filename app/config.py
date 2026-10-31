@@ -26,34 +26,27 @@ class Settings(BaseSettings):
     crawl_max_pages: int = 60
 
 
-# Deck depth levels. Size is defined by a TARGET QUESTION COUNT (user intent,
-# predictable cost), not raw per-chunk multipliers. For each level:
-#   target_questions  - the deck aims for roughly this many questions
-#   questions_per_chunk - questions drafted per (sampled) chunk
-#   max_pages         - same-domain pages fetched for URL sources
-#   difficulty_hint    - extra instruction appended to the generation prompt
+# Deck depth levels. Size is defined by the user-chosen TARGET QUESTION COUNT
+# (TARGET_CHOICES below), not by level keys. For each level:
+#   max_pages         - fallback same-domain pages for URL sources (the real crawl
+#                       budget is derived from the target, see crawl_pages_for_target)
+#   difficulty_hint   - extra instruction appended to the generation prompt
 # If the source has more chunks than needed for the target, chunks are evenly
 # sampled across the whole text so coverage stays broad at a bounded cost.
 LEVELS = {
     "quick": {
-        "target_questions": 50,
-        "questions_per_chunk": 1,
         "max_pages": 4,
         "difficulty_hint": (
             "\n\nDIFFICULTY: Beginner. Ask straightforward fact-recall questions about the "
             "most important concepts a newcomer must know. Keep phrasing simple and direct."),
     },
     "standard": {
-        "target_questions": 100,
-        "questions_per_chunk": 2,
         "max_pages": 8,
         "difficulty_hint": (
             "\n\nDIFFICULTY: Intermediate. Mix fact-recall with questions that require "
             "understanding and applying the material (inference, cause/effect, how-it-works)."),
     },
     "thorough": {
-        "target_questions": 250,
-        "questions_per_chunk": 3,
         "max_pages": 20,
         "difficulty_hint": (
             "\n\nDIFFICULTY: Advanced and extensive. Cover the material in depth: facts, "

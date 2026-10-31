@@ -21,7 +21,7 @@ from .i18n import translate
 from . import ingest
 from .ingest import IngestError, chunk_text, chunk_text_v2
 
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v3"
 MIN_VERIFY_SCORE = 0.7
 
 log = logging.getLogger("quipeat.generation")
@@ -116,6 +116,7 @@ class VerifyItem(BaseModel):
     verdict: str
     score: float = Field(ge=0.0, le=1.0)
     notes: str = ""
+    relevant_to_goal: bool = True  # v3: goal-relevance gate inside the batch call
 
 
 class VerifyResponse(BaseModel):
@@ -588,6 +589,8 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
                         f"Explanation: {q.explanation}"
                         for i, q in enumerate(candidates))
                     verify_msg = (
+                        f"LEARNING GOAL: The user wants to learn: {goal}.\n"
+                        f"A question is only acceptable if it directly serves this goal.\n\n"
                         f"Source text:\n\"\"\"\n{chunk['text']}\n\"\"\"\n\n"
                         f"{questions_block}"
                     )
@@ -597,9 +600,12 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
                                                      max_tokens=1024)
                         for item in verdict.results:
                             if 0 <= item.index < len(candidates):
-                                scores[item.index] = (
-                                    item.score if item.verdict == "pass" else 0.0)
+                                ok = item.verdict == "pass" and item.relevant_to_goal
+                                scores[item.index] = item.score if ok else 0.0
                                 notes_map[item.index] = item.notes
+                                if item.verdict == "pass" and not item.relevant_to_goal:
+                                    notes_map[item.index] = ("not relevant to the learning goal. "
+                                                             + item.notes)
                         log.info("[job %s] chunk %s pass %s: batch verify: %s/%s passed",
                                  job_id, chunk["idx"], pass_no + 1, len(scores), len(candidates))
                     except Exception as e:

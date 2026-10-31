@@ -121,8 +121,6 @@ def test_levels_config():
     from app.config import LEVELS, DEFAULT_LEVEL
     assert DEFAULT_LEVEL in LEVELS
     for cfg in LEVELS.values():
-        assert cfg["questions_per_chunk"] >= 1
-        assert cfg["target_questions"] >= cfg["questions_per_chunk"]
         assert cfg["max_pages"] >= 1
         assert cfg["difficulty_hint"]
 
@@ -1087,15 +1085,16 @@ def test_regen_modes_and_cross_run_dedup():
 def test_v2_prompts_contain_wording_and_clarity_rules():
     """P0-4/P0-5: generate_v2 has wording rules, verify_v2 has clarity checks."""
     from app.generation import _system_prompt, PROMPT_VERSION
-    assert PROMPT_VERSION == "v2"
+    assert PROMPT_VERSION == "v3"
     gen = _system_prompt("generate")
     for needle in ("40 words", "12 words", "double negative", "all of the above",
-                   "meta references", "parallel", "plausible confusions", "mandatory"):
-        assert needle.lower() in gen.lower(), f"generate_v2 missing: {needle}"
+                   "meta references", "parallel", "plausible confusions", "mandatory",
+                   "goal relevance"):
+        assert needle.lower() in gen.lower(), f"generate_v3 missing: {needle}"
     ver = _system_prompt("verify")
     for needle in ("length", "convoluted", "double negative", "meta references",
-                   "parallelism", "exactly one defensible", "notes"):
-        assert needle.lower() in ver.lower(), f"verify_v2 missing: {needle}"
+                   "parallelism", "exactly one defensible", "notes", "goal-relevance"):
+        assert needle.lower() in ver.lower(), f"verify_v3 missing: {needle}"
 
 
 def test_explanations_mandatory_and_notes_stored():
@@ -2082,3 +2081,57 @@ def test_add_material_dedups_against_existing():
             assert _similarity_norm(prompts[i], prompts[j]) <= 0.8
     keys = [_option_set_key(__import__("json").loads(q["options_json"])) for q in after]
     assert len(keys) == len(set(keys))
+
+
+def test_verify_v3_relevance_gate_drops_off_goal_questions():
+    """P3-13/14: the batch verify call carries the goal and a relevance flag; a
+    factually sound but off-goal question scores 0, an on-goal one passes."""
+    import json as _json
+    from app import generation
+    from app.llm.mock import MockProvider
+    from app.llm.structured import structured_call
+
+    calls = []
+
+    class RelevanceMock(MockProvider):
+        def chat(self, model, system, user, *, json_schema=None, temperature=0.2, max_tokens=4096):
+            schema_str = _json.dumps(json_schema or {})
+            if "verdict" in schema_str:
+                n = len(__import__("re").findall(r"^Question \d+:", user, __import__("re").M)) or 1
+                results = []
+                for i in range(n):
+                    marker = f"Question {i}:"
+                    rest = user.split(marker, 1)[1] if marker in user else user
+                    nxt = __import__("re").search(r"^Question \d+:", rest, __import__("re").M)
+                    block = rest[:nxt.start()] if nxt else rest
+                    off_goal = "OFFGOAL" in block
+                    results.append({"index": i, "verdict": "pass", "score": 0.95,
+                                    "notes": "sound", "relevant_to_goal": not off_goal})
+                return type("R", (), {"text": _json.dumps({"results": results}),
+                                      "model": "mock", "input_tokens": 1, "output_tokens": 1})()
+            return super().chat(model, system, user, json_schema=json_schema,
+                                temperature=temperature, max_tokens=max_tokens)
+
+    provider = RelevanceMock()
+    system = generation._system_prompt("verify")
+    chunk_text = "Ansible playbooks list tasks. " * 20
+    on_goal = {"prompt": "What does a playbook list?", "options": ["tasks", "a", "b", "c"],
+               "correct_index": 0, "explanation": "The text says playbooks list tasks."}
+    off_goal = {"prompt": "OFFGOAL unrelated trivia?", "options": ["x", "a", "b", "c"],
+                "correct_index": 0, "explanation": "Trivia from the text."}
+    qs = [generation.QuestionDraft(**on_goal), generation.QuestionDraft(**off_goal)]
+    questions_block = "\n".join(
+        f"Question {i}: {q.prompt}\nOptions: {_json.dumps(q.options)}\n"
+        f"Claimed correct index: {q.correct_index}\nExplanation: {q.explanation}"
+        for i, q in enumerate(qs))
+    verify_msg = (f"LEARNING GOAL: The user wants to learn: writing Ansible playbooks.\n\n"
+                  f"Source text:\n\"\"\"\n{chunk_text}\n\"\"\"\n\n{questions_block}")
+    verdict, _ = structured_call(provider, "mock-model", system, verify_msg,
+                                 generation.VerifyResponse, temperature=0.0, max_tokens=1024)
+    assert "LEARNING GOAL" in verify_msg
+    scores = {}
+    for item in verdict.results:
+        ok = item.verdict == "pass" and item.relevant_to_goal
+        scores[item.index] = item.score if ok else 0.0
+    assert scores[0] >= generation.MIN_VERIFY_SCORE, scores  # on-goal passes
+    assert scores[1] == 0.0, scores  # off-goal but factually sound -> dropped
