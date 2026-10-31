@@ -463,8 +463,12 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
             for old in db.query("SELECT prompt, options_json FROM questions WHERE deck_id = ?", (deck_id,)):
                 seen_prompts.append(old["prompt"])
                 seen_option_sets.add(_option_set_key(json.loads(old["options_json"])))
+        db.execute("UPDATE jobs SET total=? WHERE id=?", (len(chunks) * max_passes, job_id))
+        passes_run = 0
+        stop = False
         for chunk in chunks:
             for pass_no in range(max_passes):
+                passes_run = max(passes_run, pass_no + 1)
                 log.info("[job %s] chunk %s pass %s: drafting (%s words)", job_id, chunk["idx"],
                          pass_no + 1, len(chunk["text"].split()))
                 db.execute("UPDATE jobs SET stage='generating' WHERE id=?", (job_id,))
@@ -483,118 +487,120 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
                     f"Generate {questions_per_chunk} multiple-choice questions from the source text above."
                     + aspect + cfg["difficulty_hint"] + _lang_instruction(gen_lang)
                 )
-            try:
-                drafts, gen_result = structured_call(provider, model, _system_prompt("generate"),
-                                                     user_msg, GenerateResponse, temperature=0.2,
-                                                     max_tokens=2048)
-                log.info("[job %s] chunk %s pass %s: %s drafts (in=%s out=%s tokens)",
-                         job_id, chunk["idx"], pass_no + 1, len(drafts.questions),
-                         gen_result.input_tokens, gen_result.output_tokens)
-            except Exception as e:
-                log.error("[job %s] chunk %s: generation failed: %s: %s",
-                          job_id, chunk["idx"], type(e).__name__, str(e)[:300])
-                continue
-            candidates = []
-            for draft in drafts.questions:
-                if not draft.explanation or not draft.explanation.strip():
-                    log.info("[job %s] chunk %s: dropped draft with empty explanation: %r",
-                             job_id, chunk["idx"], draft.prompt[:80])
-                    db.execute("UPDATE jobs SET dropped=dropped+1 WHERE id=?", (job_id,))
-                    continue
-                q = _normalize_options(draft)
-                if q is None:
-                    log.info("[job %s] chunk %s: dropped draft with <4 distinct options or "
-                             "unidentifiable correct option: %r", job_id, chunk["idx"], draft.prompt[:80])
-                    db.execute("UPDATE jobs SET dropped=dropped+1 WHERE id=?", (job_id,))
-                    continue
-                if _is_duplicate(q.prompt, q.options, seen_prompts, seen_option_sets):
-                    log.info("[job %s] chunk %s: skipped duplicate prompt/options %r",
-                             job_id, chunk["idx"], q.prompt[:80])
-                    continue
-                candidates.append(q)
-
-            scores: dict[int, float] = {}
-            notes_map: dict[int, str] = {}
-            if candidates:
-                questions_block = "\n".join(
-                    f"Question {i}: {q.prompt}\nOptions: {json.dumps(q.options)}\n"
-                    f"Claimed correct index: {q.correct_index}\n"
-                    f"Explanation: {q.explanation}"
-                    for i, q in enumerate(candidates))
-                verify_msg = (
-                    f"Source text:\n\"\"\"\n{chunk['text']}\n\"\"\"\n\n"
-                    f"{questions_block}"
-                )
                 try:
-                    verdict, _ = structured_call(provider, model, _system_prompt("verify"),
-                                                 verify_msg, VerifyResponse, temperature=0.0,
-                                                 max_tokens=1024)
-                    for item in verdict.results:
-                        if 0 <= item.index < len(candidates):
-                            scores[item.index] = (
-                                item.score if item.verdict == "pass" else 0.0)
-                            notes_map[item.index] = item.notes
-                    log.info("[job %s] chunk %s: batch verify: %s/%s passed",
-                             job_id, chunk["idx"], len(scores), len(candidates))
+                    drafts, gen_result = structured_call(provider, model, _system_prompt("generate"),
+                                                         user_msg, GenerateResponse, temperature=0.2,
+                                                         max_tokens=2048)
+                    log.info("[job %s] chunk %s pass %s: %s drafts (in=%s out=%s tokens)",
+                             job_id, chunk["idx"], pass_no + 1, len(drafts.questions),
+                             gen_result.input_tokens, gen_result.output_tokens)
                 except Exception as e:
-                    log.warning("[job %s] chunk %s: batch verify failed (%s: %s), assuming 0.5",
-                                job_id, chunk["idx"], type(e).__name__, str(e)[:150])
-                    scores = {i: 0.5 for i in range(len(candidates))}
-
-            reached_target = False
-            if not db.query_one("SELECT 1 FROM decks WHERE id = ?", (deck_id,)):
-                log.info("[job %s] deck %s deleted mid-run; stopping", job_id, deck_id)
-                db.execute("UPDATE jobs SET status='done', finished_at=datetime('now'),"
-                           " message='Deck deleted during generation.' WHERE id=?", (job_id,))
-                return
-            db.execute("UPDATE jobs SET stage='verifying' WHERE id=?", (job_id,))
-            for i, q in enumerate(candidates):
-                score = scores.get(i, 0.5)
-                db.execute("UPDATE jobs SET generated=generated+1 WHERE id=?", (job_id,))
-                if score < MIN_VERIFY_SCORE:
-                    log.info("[job %s] chunk %s: rejected by verify (score=%s < %s): %r | notes: %s",
-                             job_id, chunk["idx"], score, MIN_VERIFY_SCORE, q.prompt[:80],
-                             notes_map.get(i, "")[:150])
-                    db.execute("UPDATE jobs SET dropped=dropped+1 WHERE id=?", (job_id,))
+                    log.error("[job %s] chunk %s pass %s: generation failed: %s: %s",
+                              job_id, chunk["idx"], pass_no + 1, type(e).__name__, str(e)[:300])
+                    db.execute("UPDATE jobs SET done=done+1 WHERE id=?", (job_id,))
                     continue
-                inserted = db.query_one(
-                    "SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))["n"]
-                if inserted >= target_questions:
-                    db.execute("UPDATE jobs SET done=done+1, message=? WHERE id=?",
-                               (f"Target reached ({target_questions} questions).", job_id))
-                    reached_target = True
-                    break
-                db.execute(
-                    "INSERT INTO questions(deck_id, chunk_id, prompt, options_json, correct_index,"
-                    " explanation, difficulty, model, prompt_version, verify_score, verify_notes)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (deck_id, chunk["id"], q.prompt, json.dumps(q.options), q.correct_index,
-                     q.explanation, q.difficulty, model, PROMPT_VERSION, score,
-                     notes_map.get(i, "")),
-                )
-                db.execute("UPDATE jobs SET kept=kept+1 WHERE id=?", (job_id,))
-                seen_prompts.append(q.prompt)
-                seen_option_sets.add(_option_set_key(q.options))
-            if reached_target:
+                candidates = []
+                for draft in drafts.questions:
+                    if not draft.explanation or not draft.explanation.strip():
+                        log.info("[job %s] chunk %s: dropped draft with empty explanation: %r",
+                                 job_id, chunk["idx"], draft.prompt[:80])
+                        db.execute("UPDATE jobs SET dropped=dropped+1 WHERE id=?", (job_id,))
+                        continue
+                    q = _normalize_options(draft)
+                    if q is None:
+                        log.info("[job %s] chunk %s: dropped draft with <4 distinct options or "
+                                 "unidentifiable correct option: %r", job_id, chunk["idx"], draft.prompt[:80])
+                        db.execute("UPDATE jobs SET dropped=dropped+1 WHERE id=?", (job_id,))
+                        continue
+                    if _is_duplicate(q.prompt, q.options, seen_prompts, seen_option_sets):
+                        log.info("[job %s] chunk %s: skipped duplicate prompt/options %r",
+                                 job_id, chunk["idx"], q.prompt[:80])
+                        continue
+                    candidates.append(q)
+
+                scores: dict[int, float] = {}
+                notes_map: dict[int, str] = {}
+                if candidates:
+                    questions_block = "\n".join(
+                        f"Question {i}: {q.prompt}\nOptions: {json.dumps(q.options)}\n"
+                        f"Claimed correct index: {q.correct_index}\n"
+                        f"Explanation: {q.explanation}"
+                        for i, q in enumerate(candidates))
+                    verify_msg = (
+                        f"Source text:\n\"\"\"\n{chunk['text']}\n\"\"\"\n\n"
+                        f"{questions_block}"
+                    )
+                    try:
+                        verdict, _ = structured_call(provider, model, _system_prompt("verify"),
+                                                     verify_msg, VerifyResponse, temperature=0.0,
+                                                     max_tokens=1024)
+                        for item in verdict.results:
+                            if 0 <= item.index < len(candidates):
+                                scores[item.index] = (
+                                    item.score if item.verdict == "pass" else 0.0)
+                                notes_map[item.index] = item.notes
+                        log.info("[job %s] chunk %s pass %s: batch verify: %s/%s passed",
+                                 job_id, chunk["idx"], pass_no + 1, len(scores), len(candidates))
+                    except Exception as e:
+                        log.warning("[job %s] chunk %s: batch verify failed (%s: %s), assuming 0.5",
+                                    job_id, chunk["idx"], type(e).__name__, str(e)[:150])
+                        scores = {i: 0.5 for i in range(len(candidates))}
+
+                reached_target = False
+                if not db.query_one("SELECT 1 FROM decks WHERE id = ?", (deck_id,)):
+                    log.info("[job %s] deck %s deleted mid-run; stopping", job_id, deck_id)
+                    db.execute("UPDATE jobs SET status='done', finished_at=datetime('now'),"
+                               " message='Deck deleted during generation.' WHERE id=?", (job_id,))
+                    return
+                db.execute("UPDATE jobs SET stage='verifying' WHERE id=?", (job_id,))
+                for i, q in enumerate(candidates):
+                    score = scores.get(i, 0.5)
+                    db.execute("UPDATE jobs SET generated=generated+1 WHERE id=?", (job_id,))
+                    if score < MIN_VERIFY_SCORE:
+                        log.info("[job %s] chunk %s: rejected by verify (score=%s < %s): %r | notes: %s",
+                                 job_id, chunk["idx"], score, MIN_VERIFY_SCORE, q.prompt[:80],
+                                 notes_map.get(i, "")[:150])
+                        db.execute("UPDATE jobs SET dropped=dropped+1 WHERE id=?", (job_id,))
+                        continue
+                    inserted = db.query_one(
+                        "SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))["n"]
+                    if inserted >= target_questions:
+                        db.execute("UPDATE jobs SET done=done+1, message=? WHERE id=?",
+                                   (f"Target reached ({target_questions} questions).", job_id))
+                        reached_target = True
+                        break
+                    db.execute(
+                        "INSERT INTO questions(deck_id, chunk_id, prompt, options_json, correct_index,"
+                        " explanation, difficulty, model, prompt_version, verify_score, verify_notes)"
+                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (deck_id, chunk["id"], q.prompt, json.dumps(q.options), q.correct_index,
+                         q.explanation, q.difficulty, model, PROMPT_VERSION, score,
+                         notes_map.get(i, "")),
+                    )
+                    db.execute("UPDATE jobs SET kept=kept+1 WHERE id=?", (job_id,))
+                    seen_prompts.append(q.prompt)
+                    seen_option_sets.add(_option_set_key(q.options))
+                db.execute("UPDATE jobs SET done=done+1 WHERE id=?", (job_id,))
+                job_handler.flush_batch()
+                if reached_target or db.query_one(
+                        "SELECT COUNT(*) n FROM questions WHERE deck_id = ?", (deck_id,))["n"] >= target_questions:
+                    stop = True
+                    break  # target hit; skip remaining passes and chunks
+            if stop:
                 break
-            db.execute("UPDATE jobs SET done=done+1 WHERE id=?", (job_id,))
-            job_handler.flush_batch()
-            if db.query_one("SELECT COUNT(*) n FROM questions WHERE deck_id = ?", (deck_id,))["n"] >= target_questions:
-                break  # target hit mid-chunk-list; skip remaining passes/chunks
         inserted = db.query_one("SELECT COUNT(*) AS n FROM questions WHERE deck_id = ?", (deck_id,))["n"]
         log.info("[job %s] finished: %s questions inserted (target was %s)",
                  job_id, inserted, target_questions)
         db.execute("UPDATE jobs SET stage='done' WHERE id=?", (job_id,))
+        ulang = (db.query_one("SELECT lang FROM users WHERE id = ?", (user_id,)) or {"lang": "en"})["lang"]
+        ceiling = len(chunks) * questions_per_chunk * passes_run
         if inserted >= target_questions:
-            msg = f"Generation complete — {inserted} questions (target {target_questions})."
+            msg = translate(ulang, "job_done_target", kept=inserted, target=target_questions)
         elif inserted:
-            msg = (f"Generation complete — {inserted} of {target_questions} target questions. "
-                   f"Shortfall: the source had only {len(chunks)} usable excerpt(s); "
-                   f"max {len(chunks) * MAX_QUESTIONS_PER_CHUNK * MAX_PASSES_PER_CHUNK} questions "
-                   f"were possible from it. Add a bigger source or lower the target.")
+            msg = translate(ulang, "job_done_shortfall", kept=inserted, target=target_questions,
+                            chunks=len(chunks), ceiling=ceiling, passes=passes_run)
         else:
-            msg = ("Generation complete, but the source contained little substantive content"
-                   " about the topic — try a more specific link or paste the text directly.")
+            msg = translate(ulang, "job_done_empty")
         db.execute("UPDATE jobs SET status='done', finished_at=datetime('now'), message=? WHERE id=?",
                    (msg, job_id))
         db.execute("UPDATE decks SET status='ready' WHERE id=?", (deck_id,))
