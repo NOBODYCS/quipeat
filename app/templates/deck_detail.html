@@ -25,7 +25,7 @@
   {% if job.status == 'done' and job.kept is not none %}
   <div class="card p-4 mb-6 flex flex-wrap items-center gap-3">
     <span class="text-sm">{{ t("result_summary", kept=job.kept or 0, dropped=job.dropped or 0, generated=job.generated or 0) }}</span>
-    <a href="/decks/{{ deck.id }}/questions" class="btn-primary btn-sm ml-auto">{{ t("review_questions") }} →</a>
+    <a href="/decks/{{ deck.id }}/inspect" class="btn-primary btn-sm ml-auto">{{ t("inspect_deck") }} →</a>
   </div>
   {% endif %}
 {% endif %}
@@ -33,7 +33,6 @@
   {% if deck.status == 'ready' %}
   <a href="/study/{{ deck.id }}" class="btn-primary">{{ t("start_studying") }}</a>
   {% endif %}
-  <a href="/decks/{{ deck.id }}/questions" class="btn-ghost">{{ t("review_questions") }}</a>
   <a href="/decks/{{ deck.id }}/inspect" class="btn-ghost">{{ t("inspect_deck") }}</a>
   <a href="/decks/{{ deck.id }}/export.pack.json" class="btn-ghost">⬇ {{ t("export_pack") }}</a>
 </div>

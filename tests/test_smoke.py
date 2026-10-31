@@ -2135,3 +2135,41 @@ def test_verify_v3_relevance_gate_drops_off_goal_questions():
         scores[item.index] = item.score if ok else 0.0
     assert scores[0] >= generation.MIN_VERIFY_SCORE, scores  # on-goal passes
     assert scores[1] == 0.0, scores  # off-goal but factually sound -> dropped
+
+
+def test_editor_link_hidden_behind_disclosure_and_no_explanation_leak():
+    """Spoiler gate: deck detail has NO link to /questions; inspect page has
+    exactly one, inside a <details> disclosure with a disclaimer; unanswered
+    questions render the explanation hidden (class 'hidden'), answered ones
+    render it visible."""
+    import re as _re
+    c, deck_id, q = _register_and_deck("spoiler@example.com")
+    det = c.get(f"/decks/{deck_id}")
+    assert det.status_code == 200
+    # deck detail: no link to the editor (flagged-section edit links use #q- anchors, so
+    # only count plain hrefs to the editor page)
+    assert f'href="/decks/{deck_id}/questions"' not in det.text
+    assert f'href="/decks/{deck_id}/inspect"' in det.text
+
+    insp = c.get(f"/decks/{deck_id}/inspect")
+    assert insp.status_code == 200
+    links = _re.findall(r'href="/decks/%d/questions[^"]*"' % deck_id, insp.text)
+    assert len(links) == 1, links
+    # the link sits inside a <details> disclosure with the disclaimer
+    assert "<details" in insp.text and "edit" in insp.text.lower()
+    assert "not to study" in insp.text
+    # unanswered question: explanation element present but hidden
+    assert f'id="iq-expl-{q["id"]}"' in insp.text
+    expl_block = _re.search(r'<p class="[^"]*hidden[^"]*" id="iq-expl-%d">(.*?)</p>' % q["id"], insp.text, _re.S)
+    assert expl_block, "explanation must render hidden for unanswered question"
+    assert expl_block.group(1).strip() == q["explanation"].strip()
+
+    # mark answered -> explanation visible, no hidden class
+    db.execute("INSERT INTO reviews(question_id, user_id, rating, correct, xp_awarded) VALUES (?, ?, 'good', 1, 10)",
+               (q["id"], db.query_one("SELECT id FROM users WHERE email='spoiler@example.com'")["id"]))
+    insp2 = c.get(f"/decks/{deck_id}/inspect")
+    expl2 = _re.search(r'<p class="([^"]*)" id="iq-expl-%d">' % q["id"], insp2.text)
+    assert expl2 and "hidden" not in expl2.group(1), "answered question explanation must be visible"
+    # direct URL to the editor still works
+    r = c.get(f"/decks/{deck_id}/questions")
+    assert r.status_code == 200

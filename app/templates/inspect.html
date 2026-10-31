@@ -30,16 +30,24 @@
       {% endfor %}
       {% if not q.answered %}
       <button type="button" class="btn-ghost btn-sm mt-2 reveal-btn"
-              onclick="var box = document.getElementById('iq-{{ q.id }}'); box.querySelectorAll('.reveal-correct').forEach(function (el, i) { if (i === {{ q.correct_index }}) el.classList.remove('hidden'); }); this.classList.add('hidden');">
+              onclick="var box = document.getElementById('iq-{{ q.id }}'); box.querySelectorAll('.reveal-correct').forEach(function (el, i) { if (i === {{ q.correct_index }}) el.classList.remove('hidden'); }); var ex = document.getElementById('iq-expl-{{ q.id }}'); if (ex) ex.classList.remove('hidden'); this.classList.add('hidden');">
         {{ t("reveal_answer") }}
       </button>
       {% else %}
       <p class="text-xs text-volt-300 mt-2 reveal-correct-all">✓ {{ t("answer_label") }}: {{ "ABCD"[q.correct_index] }}) {{ q.options[q.correct_index] }}</p>
       {% endif %}
-      {% if q.explanation %}<p class="text-xs text-mist-500 mt-2">{{ q.explanation }}</p>{% endif %}
+      {% if q.explanation %}
+      {% if not q.answered %}<p class="text-xs text-mist-500 mt-2 hidden" id="iq-expl-{{ q.id }}">{{ q.explanation }}</p>
+      {% else %}<p class="text-xs text-mist-500 mt-2" id="iq-expl-{{ q.id }}">{{ q.explanation }}</p>{% endif %}
+      {% endif %}
     </div>
   </div>
   {% endfor %}
 </div>
 {% endif %}
+<details class="card p-4 mt-6">
+  <summary class="text-sm font-semibold text-mist-400 hover:text-volt-300 cursor-pointer transition">{{ t("edit_questions_disclosure") }}</summary>
+  <p class="text-xs text-mist-500 mt-2">{{ t("edit_questions_disclaimer") }}</p>
+  <a href="/decks/{{ deck.id }}/questions" class="btn-ghost btn-sm mt-3 inline-block">{{ t("review_questions") }} →</a>
+</details>
 {% endblock %}
