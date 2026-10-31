@@ -25,6 +25,12 @@ EXPECTED = {
     "photosynthesis.txt": {"min_questions": 1},
     "short_note.txt": {"min_questions": 1},
     "polish_history.txt": {"min_questions": 1},
+    "multi_source_a.txt": {"min_questions": 1, "multi_source": "multi_source_b.txt",
+                           "goal": "write and run Ansible playbooks"},
+    "multi_source_b.txt": {"min_questions": 0},  # consumed as second source of multi_source_a
+    "goal_conflict.txt": {"min_questions": 0, "goal": "write and run Ansible playbooks",
+                          "allow_shortfall": True},
+    "relevance.txt": {"min_questions": 1, "goal": "understand photosynthesis"},
 }
 
 _META_RE = None
@@ -64,6 +70,13 @@ def run(model: str | None) -> int:
         settings.llm_mock = False
     failures = 0
     for sample in sorted(SAMPLES.glob("*.txt")):
+        exp0 = EXPECTED.get(sample.name, {})
+        if exp0.get("multi_source") or exp0.get("min_questions") == 0 and not exp0.get("goal") and not exp0.get("multi_source"):
+            # secondary sources of a multi-source sample are folded in below
+            if exp0.get("multi_source"):
+                pass
+            else:
+                continue
         text = sample.read_text()
         cur = db.execute(
             "INSERT INTO users(email, password_hash) VALUES (?, ?)",
@@ -83,9 +96,25 @@ def run(model: str | None) -> int:
         source_id = cur.lastrowid
         for i, piece in enumerate(chunk_text_v2(text)):
             db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)", (source_id, i, piece))
-        cur = db.execute("INSERT INTO decks(user_id, source_id, title, status) VALUES (?, ?, ?, 'draft')",
-                         (user_id, source_id, sample.stem))
+        source_ids = [source_id]
+        extra = EXPECTED.get(sample.name, {}).get("multi_source")
+        if extra and (SAMPLES / extra).exists():
+            text2 = (SAMPLES / extra).read_text()
+            cur = db.execute(
+                "INSERT INTO sources(user_id, kind, title, raw_text) VALUES (?, 'text', ?, ?)",
+                (user_id, extra, text2))
+            sid2 = cur.lastrowid
+            for i, piece in enumerate(chunk_text_v2(text2)):
+                db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)", (sid2, i, piece))
+            source_ids.append(sid2)
+        goal = EXPECTED.get(sample.name, {}).get("goal", f"Learn about {sample.stem}")
+        cur = db.execute(
+            "INSERT INTO decks(user_id, source_id, title, goal, status) VALUES (?, ?, ?, ?, 'draft')",
+            (user_id, source_ids[0], sample.stem, goal))
         deck_id = cur.lastrowid
+        for sid in source_ids:
+            db.execute("INSERT OR IGNORE INTO deck_sources(deck_id, source_id) VALUES (?, ?)",
+                       (deck_id, sid))
         job_id = "eval-" + sample.stem
         db.execute("INSERT INTO jobs(id, user_id, deck_id) VALUES (?, ?, ?)", (job_id, user_id, deck_id))
         generate_deck_questions(user_id, deck_id, job_id)
@@ -94,11 +123,18 @@ def run(model: str | None) -> int:
         exp = EXPECTED.get(sample.name, {})
         problems = _quality_checks(qs)
         ok = len(qs) >= exp.get("min_questions", 1) and not problems
+        job = db.query_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
+        if exp.get("allow_shortfall"):
+            # goal-conflict sample: material does not cover the goal; the job must
+            # still finish and its message must name the uncovered goal areas
+            ok = ok and job and job["status"] == "done" and len(qs) < 50
         if not ok:
             failures += 1
         line = f"[{'OK ' if ok else 'FAIL'}] {sample.name}: {len(qs)} questions"
         if scores:
             line += f", avg verify score {sum(scores) / len(scores):.2f}"
+        if job and job["message"]:
+            line += f" | job: {job['message'][:160]}"
         if problems:
             line += " | quality: " + "; ".join(problems[:5])
         print(line)
