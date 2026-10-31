@@ -2173,3 +2173,28 @@ def test_editor_link_hidden_behind_disclosure_and_no_explanation_leak():
     # direct URL to the editor still works
     r = c.get(f"/decks/{deck_id}/questions")
     assert r.status_code == 200
+
+
+def test_onboarding_matches_current_new_flow():
+    """Tutorial text must not describe removed /new entries (paste text, bare
+    topic, research-document mode) and must describe the real flow: goal +
+    files/links + target size."""
+    import re as _re
+    from app.i18n import STRINGS
+    for lang in ("en", "pl"):
+        body = STRINGS[lang]["onb2_b"]
+        assert not _re.search(r"paste text|just name a topic|research document on it first", body, _re.I), (lang, body)
+        assert not _re.search(r"wklei\u0107 tekst|wpisz temat|dokument badawczy", body, _re.I), (lang, body)
+        assert "goal" in body.lower() or "cel" in body.lower(), (lang, body)
+        assert "link" in body.lower() or "link" in body.lower(), (lang, body)
+        welcome = STRINGS[lang]["onb_welcome_body"]
+        assert "topic" not in welcome.lower(), (lang, welcome)
+        empty = STRINGS[lang]["empty_decks"]
+        assert "topic" not in empty.lower(), (lang, empty)
+    # rendered pages contain the updated strings
+    c = TestClient(app)
+    c.post("/register", data={"email": "onbtut@example.com", "password": "password123"}, follow_redirects=False)
+    r = c.get("/onboarding?step=3")
+    assert r.status_code == 200 and "learning goal" in r.text.lower()
+    r = c.get("/decks")
+    assert r.status_code == 200 and "Attach a file or a link" in r.text
