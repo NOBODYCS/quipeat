@@ -156,6 +156,18 @@ def init_db() -> None:
             conn.execute("ALTER TABLE decks ADD COLUMN goal TEXT NOT NULL DEFAULT ''")
         if "target_questions" not in dcols:
             conn.execute("ALTER TABLE decks ADD COLUMN target_questions INTEGER NOT NULL DEFAULT 50")
+        # Multi-source decks: deck_sources join table, backfilled 1:1 from
+        # decks.source_id. Idempotent: safe to run on every startup.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS deck_sources ("
+            " deck_id INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,"
+            " source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,"
+            " PRIMARY KEY (deck_id, source_id))")
+        conn.execute(
+            "INSERT OR IGNORE INTO deck_sources(deck_id, source_id)"
+            " SELECT id, source_id FROM decks WHERE source_id IS NOT NULL")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_deck_sources_deck ON deck_sources(deck_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_deck_sources_source ON deck_sources(source_id)")
         # Normalize Python-ISO timestamps ('...T...+00:00') written by older
         # versions of fsrs/security into SQLite's datetime('now') format so
         # string comparisons in SQL work uniformly.

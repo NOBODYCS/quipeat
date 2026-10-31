@@ -11,13 +11,15 @@ from pydantic import BaseModel, Field
 
 from . import db
 from .config import (DEFAULT_LEVEL, LEVELS, MAX_PASSES_PER_CHUNK,
-                     MAX_QUESTIONS_PER_CHUNK, TARGET_CHOICES, settings)
+                     MAX_QUESTIONS_PER_CHUNK, TARGET_CHOICES, crawl_pages_for_target,
+                     settings)
 from .llm.mock import MockProvider
 from .llm.providers import make_provider
 from .llm.structured import structured_call
 from .security import decrypt_secret
 from .i18n import translate
-from .ingest import extract_text_from_url, chunk_text, chunk_text_v2
+from . import ingest
+from .ingest import IngestError, chunk_text, chunk_text_v2
 
 PROMPT_VERSION = "v2"
 MIN_VERIFY_SCORE = 0.7
@@ -250,6 +252,19 @@ def _topic_score(chunk_text: str, terms: set[str]) -> float:
     return hits / len(words)
 
 
+def _uncovered_goal_terms(goal: str, kept_chunks) -> set[str]:
+    """Goal terms that appear in NONE of the kept chunks — areas of the stated
+    goal the material did not cover. Used for specific shortfall messages."""
+    terms = _topic_terms(goal)
+    if not terms or not kept_chunks:
+        return set()
+    covered: set[str] = set()
+    for c in kept_chunks:
+        words = set(_words(c["text"]))
+        covered |= terms & words
+    return terms - covered
+
+
 def _semantic_triage(provider, model, deck_title: str, chunks, job_id: str) -> list:
     """One cheap LLM call per batch of chunks: classify each excerpt as
     learning material for the topic or not. Works for any source (URL, PDF,
@@ -298,6 +313,17 @@ def _lang_instruction(lang: str) -> str:
             "in ENGLISH. The source text may be in any language — the quiz output must still be in English.")
 
 
+def _deck_source_ids(deck_id: int) -> list[int]:
+    """All sources attached to the deck via deck_sources; falls back to the
+    legacy decks.source_id for pre-migration rows."""
+    rows = db.query("SELECT source_id FROM deck_sources WHERE deck_id = ? ORDER BY source_id",
+                    (deck_id,))
+    if rows:
+        return [r["source_id"] for r in rows]
+    deck = db.query_one("SELECT source_id FROM decks WHERE id = ?", (deck_id,))
+    return [deck["source_id"]] if deck and deck["source_id"] else []
+
+
 def generate_deck_questions(user_id: int, deck_id: int, job_id: str) -> None:
     """Runs as a background thread: for every chunk, draft questions, verify each
     against its chunk, dedup, and insert passing ones. Progress is tracked in jobs."""
@@ -315,7 +341,15 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
     job = db.query_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
     deck = db.query_one(
         "SELECT d.*, s.kind AS source_kind, s.original_ref FROM decks d"
-        " JOIN sources s ON s.id = d.source_id WHERE d.id = ?", (deck_id,))
+        " LEFT JOIN sources s ON s.id = d.source_id WHERE d.id = ?", (deck_id,))
+    source_ids = _deck_source_ids(deck_id)
+    kinds = {r["kind"]: r["original_ref"] for r in db.query(
+        "SELECT kind, original_ref FROM sources WHERE id IN (%s)"
+        % ",".join("?" * len(source_ids)), tuple(source_ids))} if source_ids else {}
+    if not deck["source_kind"] and kinds:
+        deck = dict(deck)
+        first_kind = next(iter(kinds))
+        deck["source_kind"], deck["original_ref"] = first_kind, kinds[first_kind]
     gen_lang = deck["lang"] if "lang" in deck.keys() and deck["lang"] in LANG_NAMES else "en"
     level = deck["level"] if "level" in deck.keys() and deck["level"] in LEVELS else DEFAULT_LEVEL
     goal = deck["goal"] if "goal" in deck.keys() and deck["goal"].strip() else deck["title"]
@@ -332,7 +366,7 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
     # Topic sources: the LLM first writes a structured research document on the
     # topic from its own knowledge; that document becomes the source text, so
     # grounding + critic still apply to it. Stored as kind='topic'.
-    if deck["source_kind"] == "topic":
+    if deck["source_kind"] == "topic" and deck["source_id"]:
         db.execute("UPDATE jobs SET status='running', total=0, started_at=datetime('now'),"
                    " stage='research', message='Writing research document on the topic…' WHERE id=?", (job_id,))
         log.info("[job %s] topic mode: writing research doc for %r", job_id, goal[:120])
@@ -368,38 +402,65 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
 
     # URL sources: crawl now (in the background), store text + chunks.
     # The POST returned immediately; the job bar polls for progress.
-    if deck["source_kind"] == "url":
+    # Multi-source decks: every kind='url' source gets its own target-budgeted crawl.
+    url_sources = [sid for sid in source_ids
+                   if (db.query_one("SELECT kind FROM sources WHERE id = ?", (sid,)) or {"kind": ""})["kind"] == "url"]
+    if url_sources:
+        max_pages = crawl_pages_for_target(target_questions)
+        total_words = 0
+        pages_read = 0
+        pages_skipped = 0
         db.execute("UPDATE jobs SET status='running', total=0, started_at=datetime('now'),"
-                   " message='Fetching and reading the link…' WHERE id=?", (job_id,))
-        log.info("[job %s] crawling url=%s max_pages=%s",
-                 job_id, deck["original_ref"], cfg["max_pages"])
-        try:
-            raw = extract_text_from_url(deck["original_ref"], max_pages=cfg["max_pages"])
-        except Exception as e:
-            log.error("[job %s] crawl failed: %s: %s", job_id, type(e).__name__, e)
+                   " message='Fetching and reading the link(s)…' WHERE id=?", (job_id,))
+        for sid in url_sources:
+            ref = db.query_one("SELECT original_ref FROM sources WHERE id = ?", (sid,))["original_ref"]
+            log.info("[job %s] crawling url=%s max_pages=%s (target=%s)",
+                     job_id, ref, max_pages, target_questions)
+            try:
+                raw = ingest.extract_text_from_url(ref, max_pages=max_pages)
+            except IngestError as e:
+                # specific ingest errors (challenge page etc.) fail the whole job
+                key = str(e)
+                ulang = (db.query_one("SELECT lang FROM users WHERE id = ?", (user_id,)) or {"lang": "en"})["lang"]
+                msg = translate(ulang, key[2:]) if key.startswith("__") else str(e)[:200]
+                log.error("[job %s] crawl failed for %s: %s", job_id, ref, msg)
+                db.execute("UPDATE jobs SET status='failed', error=?, finished_at=datetime('now') WHERE id=?",
+                           (msg, job_id))
+                db.execute("UPDATE decks SET status='failed' WHERE id=?", (deck_id,))
+                return
+            except Exception as e:
+                log.error("[job %s] crawl failed for %s: %s: %s", job_id, ref, type(e).__name__, e)
+                pages_skipped += 1
+                continue
+            if not raw.strip():
+                pages_skipped += 1
+                continue
+            pages_read += 1
+            words = len(raw.split())
+            total_words += words
+            log.info("[job %s] crawl done for %s: %s words (budget %s pages)", job_id, ref, words, max_pages)
+            db.execute("UPDATE sources SET raw_text=? WHERE id=?", (raw, sid))
+            pieces = chunk_text_v2(raw)
+            for idx, piece in enumerate(pieces):
+                db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)", (sid, idx, piece))
+            log.info("[job %s] chunked %s into %s pieces", job_id, ref, len(pieces))
+        if pages_read == 0:
             ulang = (db.query_one("SELECT lang FROM users WHERE id = ?", (user_id,)) or {"lang": "en"})["lang"]
-            key = str(e)
-            msg = translate(ulang, key[2:]) if key.startswith("__") else str(e)[:200]
             db.execute("UPDATE jobs SET status='failed', error=?, finished_at=datetime('now') WHERE id=?",
-                       (msg, job_id))
+                       (translate(ulang, "err_extract"), job_id))
             db.execute("UPDATE decks SET status='failed' WHERE id=?", (deck_id,))
             return
-        if not raw.strip():
-            db.execute("UPDATE jobs SET status='failed', error='No readable text found at this link.',"
-                       " finished_at=datetime('now') WHERE id=?", (job_id,))
-            db.execute("UPDATE decks SET status='failed' WHERE id=?", (deck_id,))
-            return
-        log.info("[job %s] crawl done: %s words extracted", job_id, len(raw.split()))
-        db.execute("UPDATE sources SET raw_text=? WHERE id=?", (raw, deck["source_id"]))
-        pieces = chunk_text_v2(raw)
-        for idx, piece in enumerate(pieces):
-            db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)",
-                       (deck["source_id"], idx, piece))
-        log.info("[job %s] chunked into %s pieces", job_id, len(pieces))
-        db.execute("UPDATE jobs SET stage='generating' WHERE id=?", (job_id,))
+        db.execute("UPDATE jobs SET stage='generating', message=? WHERE id=?",
+                   (f"Read {pages_read} link(s) ({pages_skipped} skipped), {total_words} words of material."
+                    " Generating questions…", job_id))
 
-    chunks = db.query(
-        "SELECT * FROM chunks WHERE source_id = ? ORDER BY idx", (deck["source_id"],))
+    # Combined chunk pool across ALL sources of the deck.
+    if source_ids:
+        chunks = db.query(
+            "SELECT * FROM chunks WHERE source_id IN (%s) ORDER BY source_id, idx"
+            % ",".join("?" * len(source_ids)), tuple(source_ids))
+    else:
+        chunks = []
     # Now that we know the real chunk count, derive density and multi-pass budget.
     n_chunks = max(1, len(chunks))
     questions_per_chunk = min(MAX_QUESTIONS_PER_CHUNK, max(1, -(-target_questions // n_chunks)))
@@ -599,8 +660,14 @@ def _generate_deck_questions_inner(user_id: int, deck_id: int, job_id: str,
         elif inserted:
             msg = translate(ulang, "job_done_shortfall", kept=inserted, target=target_questions,
                             chunks=len(chunks), ceiling=ceiling, passes=passes_run)
+            uncovered = _uncovered_goal_terms(goal, chunks)
+            if uncovered:
+                msg += " " + translate(ulang, "job_goal_gaps", terms=", ".join(sorted(uncovered)[:8]))
         else:
             msg = translate(ulang, "job_done_empty")
+            uncovered = _uncovered_goal_terms(goal, chunks)
+            if uncovered:
+                msg += " " + translate(ulang, "job_goal_gaps", terms=", ".join(sorted(uncovered)[:8]))
         db.execute("UPDATE jobs SET status='done', finished_at=datetime('now'), message=? WHERE id=?",
                    (msg, job_id))
         db.execute("UPDATE decks SET status='ready' WHERE id=?", (deck_id,))

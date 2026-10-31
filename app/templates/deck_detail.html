@@ -7,6 +7,7 @@
   <div class="mt-2 flex flex-wrap gap-1.5 text-xs">
     <span class="chip">{{ t("source_kind_" ~ deck.source_kind) }}{% if deck.original_ref %} · {{ deck.original_ref }}{% endif %}</span>
     {% if deck.source_kind == 'topic' %}<span class="chip chip-volt" title="{{ t("topic_only_hint") }}">⚠ {{ t("topic_grounded_chip") }}</span>{% endif %}
+    {% if legacy_source %}<span class="chip" title="{{ t("legacy_source_note") }}">⚠ {{ t("legacy_source_note") }}</span>{% endif %}
     <span class="chip">{{ deck.q_count }} {{ t("questions_n") }}</span>
     {% if deck.due_count %}<span class="chip chip-volt">{{ deck.due_count }} {{ t("due_n") }}</span>{% endif %}
     {% if deck.status == 'ready' %}<span class="chip chip-mint">{{ t("status_ready") }}</span>
@@ -58,6 +59,36 @@
     <input type="text" name="title" value="{{ deck.title }}" maxlength="120" class="input flex-1 min-w-[200px] !min-h-0 !py-2" aria-label="{{ t('deck_title_label') }}" required>
     <button class="btn-ghost btn-sm">{{ t("rename_deck") }}</button>
   </form>
+  {% if deck_sources %}
+  <div class="pt-4 border-t border-ink-750 mb-4">
+    <h3 class="text-xs font-extrabold text-mist-400 mb-2">{{ t("sources_section") }}</h3>
+    <ul class="space-y-1.5">
+      {% for s in deck_sources %}
+      <li class="flex items-center gap-2 text-sm">
+        <span class="chip">{{ t("source_kind_" ~ s.kind) }}</span>
+        {% if s.kind == 'url' and s.original_ref %}<a href="{{ s.original_ref }}" target="_blank" rel="noopener" class="text-volt-300 hover:underline break-all">{{ s.original_ref }}</a>
+        {% else %}<span class="break-all">{{ s.original_ref or s.title }}</span>{% endif %}
+        <form method="post" action="/decks/{{ deck.id }}/sources/{{ s.id }}/remove"
+              onsubmit="return confirm('{{ t("confirm_remove_source_ready") if deck.status == 'ready' else t("remove_source") }}')"
+              class="ml-auto">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="text-xs text-red-400 hover:text-red-300 transition">{{ t("remove_source") }}</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    <details class="mt-3">
+      <summary class="text-xs text-mist-400 hover:text-volt-300 cursor-pointer transition">{{ t("add_material") }}</summary>
+      <form method="post" action="/decks/{{ deck.id }}/add-material" enctype="multipart/form-data" class="mt-2 space-y-2">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="file" name="files" multiple accept=".pdf,.docx,.txt,.md,.markdown,.csv"
+               class="w-full text-sm text-mist-400 file:mr-3 file:btn-ghost file:btn-sm file:text-xs">
+        <textarea name="urls" rows="2" placeholder="{{ t("materials_urls_ph") }}" class="input w-full"></textarea>
+        <button class="btn-ghost btn-sm">{{ t("add_material") }}</button>
+      </form>
+    </details>
+  </div>
+  {% endif %}
   <div class="flex flex-wrap gap-3 pt-4 border-t border-ink-750">
     <form method="post" action="/decks/{{ deck.id }}/regen" onsubmit="return confirm('{{ t("confirm_regen") }}')">
       <input type="hidden" name="csrf" value="{{ csrf }}">

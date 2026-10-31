@@ -15,7 +15,7 @@ from . import db, gamify
 from .fsrs import grade, xp_for
 from .config import DEFAULT_LEVEL, DEFAULT_TARGET, LEVELS, TARGET_CHOICES, settings
 from .i18n import LANGS, STRINGS, translate
-from .generation import start_generation
+from .generation import start_generation, _deck_source_ids
 from .ingest import chunk_text, chunk_text_v2, extract_text_from_file, extract_text_from_url, IngestError
 from .llm.providers import DEFAULT_MODELS
 from .security import (create_session, csrf_token, decrypt_secret, delete_session, encrypt_secret,
@@ -331,8 +331,13 @@ def _expected_questions(deck_id: int) -> int:
     if not deck:
         return 0
     target = deck["target_questions"] if deck["target_questions"] in TARGET_CHOICES else DEFAULT_TARGET
-    n_chunks = db.query_one("SELECT COUNT(*) AS n FROM chunks WHERE source_id = ?",
-                            (deck["source_id"],))["n"]
+    sids = _deck_source_ids(deck_id)
+    if sids:
+        n_chunks = db.query_one(
+            "SELECT COUNT(*) AS n FROM chunks WHERE source_id IN (%s)" % ",".join("?" * len(sids)),
+            tuple(sids))["n"]
+    else:
+        n_chunks = 0
     if n_chunks:
         from .config import MAX_PASSES_PER_CHUNK, MAX_QUESTIONS_PER_CHUNK
         return min(target, n_chunks * MAX_QUESTIONS_PER_CHUNK * MAX_PASSES_PER_CHUNK)
@@ -344,7 +349,7 @@ async def decks(request: Request, created: int | None = None):
     rows = db.query(
         "SELECT d.*, s.kind AS source_kind, (SELECT COUNT(*) FROM questions q WHERE q.deck_id = d.id) AS q_count,"
         " (SELECT COUNT(*) FROM questions q WHERE q.deck_id = d.id AND q.due_at <= datetime('now') AND q.flagged = 0) AS due_count"
-        " FROM decks d JOIN sources s ON s.id = d.source_id WHERE d.user_id = ? ORDER BY d.created_at DESC",
+        " FROM decks d LEFT JOIN sources s ON s.id = d.source_id WHERE d.user_id = ? ORDER BY d.created_at DESC",
         (user["id"],))
     from .mastery import deck_mastery, deck_level
     enriched = []
@@ -365,75 +370,86 @@ async def new_source_form(request: Request):
 
 @app.post("/new")
 async def new_source(request: Request, title: str = Form(...), goal: str = Form(""),
-                     url: str = Form(""), topic_text: str = Form(""),
+                     urls: str = Form(""), topic_text: str = Form(""),
                      source_mode: str = Form("text"),
                      lang: str = Form("en"), level: str = Form(DEFAULT_LEVEL),
                      target: int = Form(DEFAULT_TARGET),
-                     file: UploadFile | None = File(None)):
+                     files: list[UploadFile] = File([])):
+    """Unified /new flow: title (optional), learning goal (required), one or more
+    materials (files and/or links, required), quiz language, target size.
+    Topic-only and paste-text creation are gone; quick notes = .txt/.md upload.
+    Legacy topic/text decks stay playable; the pack pipeline keeps its own
+    kind='topic' path (scripts/build_pack.py), untouched here."""
     user = require_user(request)
     title = title.strip()
     goal = goal.strip()
-    url = url.strip()
-    topic_text = topic_text.strip()
+    url_list = [u.strip() for u in urls.splitlines() if u.strip()]
+    # tolerate legacy single-url field name
+    if not url_list:
+        form = await request.form()
+        single = (form.get("url") or "").strip()
+        if single:
+            url_list = [single]
+    files = [f for f in files if f and f.filename]
     if lang not in LANGS:
         lang = user["lang"] if user["lang"] in LANGS else "en"
     if level not in LEVELS:
         level = DEFAULT_LEVEL
     if target not in TARGET_CHOICES:
         target = DEFAULT_TARGET
+    render = lambda error: page(request, "new_source.html", error=error,
+                               title=title, goal=goal, level=level,
+                               target_choices=TARGET_CHOICES, default_target=DEFAULT_TARGET)
+    if not goal:
+        return render(translate(lang_of(request, user), "err_no_goal"))
+    if not files and not url_list:
+        return render(translate(lang_of(request, user), "err_no_material"))
+    materials: list[tuple[str, str, str]] = []  # (kind, ref, raw)
     try:
-        if file and file.filename:
-            data = await file.read()
+        for f in files:
+            data = await f.read()
             if len(data) > settings.max_upload_mb * 1024 * 1024:
                 raise IngestError("__err_file_too_big")
             upload_dir = Path(settings.upload_dir)
             upload_dir.mkdir(parents=True, exist_ok=True)
-            safe_name = Path(file.filename).name  # strip any path components
+            safe_name = Path(f.filename).name  # strip any path components
             tmp = upload_dir / f"{secrets.token_hex(8)}_{safe_name}"
             tmp.write_bytes(data)
             try:
                 raw = extract_text_from_file(tmp, safe_name)
             finally:
                 tmp.unlink(missing_ok=True)
-            kind, ref = "file", safe_name
-        elif url:
-            raw = ""
-            kind, ref = "url", url
-        elif topic_text and source_mode == "topic":
-            # Topic mode: the text is a TOPIC NAME, not source material. The
-            # background job writes a research document on it first (kind='topic').
-            raw = ""
-            kind, ref = "topic", topic_text
-        elif topic_text:
-            raw = topic_text
-            kind, ref = "text", None
-        else:
-            raise IngestError("__err_empty_source")
+            if not raw.strip():
+                raise IngestError("__err_no_text")
+            materials.append(("file", safe_name, raw))
+        for u in url_list:
+            materials.append(("url", u, ""))  # url sources are crawled by the job
     except IngestError as e:
         key = str(e)
-        if key.startswith("__"):
-            key = key[2:]
-        else:
-            key = "err_generic"
-        return page(request, "new_source.html", error=translate(lang_of(request, user), key))
-    if kind not in ("url", "topic") and not raw.strip():
-        return page(request, "new_source.html", error=translate(lang_of(request, user), "err_no_text"))
-    if not goal:
-        return page(request, "new_source.html", error=translate(lang_of(request, user), "err_no_goal"),
-                    title=title, goal=goal, url=url, topic_text=topic_text, level=level,
-                    target_choices=TARGET_CHOICES, default_target=DEFAULT_TARGET)
+        key = key[2:] if key.startswith("__") else "err_generic"
+        return render(translate(lang_of(request, user), key))
     if not title:
-        title = (ref or "Untitled")[:80]
-    cur = db.execute("INSERT INTO sources(user_id, kind, title, original_ref, raw_text) VALUES (?, ?, ?, ?, ?)",
-                     (user["id"], kind, title, ref, raw))
-    source_id = cur.lastrowid
-    if kind != "topic":  # topic sources are chunked by the job after the research doc is written
-        for idx, piece in enumerate(chunk_text_v2(raw)):
-            db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)", (source_id, idx, piece))
-    cur = db.execute("INSERT INTO decks(user_id, source_id, title, goal, lang, level, target_questions)"
-                     " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                     (user["id"], source_id, title, goal, lang, level, target))
+        title = (materials[0][1] or "Untitled")[:80]
+    source_ids = []
+    for kind, ref, raw in materials:
+        cur = db.execute(
+            "INSERT INTO sources(user_id, kind, title, original_ref, raw_text) VALUES (?, ?, ?, ?, ?)",
+            (user["id"], kind, title if len(materials) == 1 else (ref or title), ref, raw))
+        source_ids.append(cur.lastrowid)
+        if kind != "url":
+            for idx, piece in enumerate(chunk_text_v2(raw)):
+                db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)",
+                           (source_ids[-1], idx, piece))
+    # decks.source_id = first material: keeps the legacy NOT NULL column satisfied
+    # on pre-migration DBs and keeps pack/legacy JOIN queries working.
+    cur = db.execute(
+        "INSERT INTO decks(user_id, source_id, title, goal, lang, level, target_questions)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (user["id"], source_ids[0], title, goal, lang, level, target))
     deck_id = cur.lastrowid
+    for sid in source_ids:
+        db.execute("INSERT OR IGNORE INTO deck_sources(deck_id, source_id) VALUES (?, ?)",
+                   (deck_id, sid))
     job_id = start_generation(user["id"], deck_id)
     return RedirectResponse(f"/decks?created={deck_id}", status_code=303)
 
@@ -445,10 +461,17 @@ async def deck_detail(request: Request, deck_id: int, job: str | None = None):
         "SELECT d.*, s.kind AS source_kind, s.original_ref, s.title AS source_title,"
         " (SELECT COUNT(*) FROM questions q WHERE q.deck_id = d.id) AS q_count,"
         " (SELECT COUNT(*) FROM questions q WHERE q.deck_id = d.id AND q.due_at <= datetime('now') AND q.flagged = 0) AS due_count"
-        " FROM decks d JOIN sources s ON s.id = d.source_id WHERE d.id = ? AND d.user_id = ?",
+        " FROM decks d LEFT JOIN sources s ON s.id = d.source_id WHERE d.id = ? AND d.user_id = ?",
         (deck_id, user["id"]))
     if not deck:
         return RedirectResponse("/decks", status_code=303)
+    sids = _deck_source_ids(deck_id)
+    deck_sources = db.query(
+        "SELECT s.id, s.kind, s.title, s.original_ref,"
+        " (SELECT COUNT(*) FROM chunks c WHERE c.source_id = s.id) AS chunk_count"
+        " FROM sources s WHERE s.id IN (%s) ORDER BY s.id" % (",".join("?" * len(sids)) or "NULL"),
+        tuple(sids)) if sids else []
+    legacy_source = deck["source_kind"] in ("topic", "text")
     job_row = db.query_one("SELECT * FROM jobs WHERE id = ? AND user_id = ?", (job, user["id"])) if job else None
     if not job_row and deck["status"] in ("ready", "failed"):
         job_row = db.query_one(
@@ -459,7 +482,8 @@ async def deck_detail(request: Request, deck_id: int, job: str | None = None):
         (deck_id,))
     flagged_items = [{**dict(f), "options": json.loads(f["options_json"])} for f in flagged]
     return page(request, "deck_detail.html", deck=deck, job=job_row, flagged=flagged_items,
-                expected_q=_expected_questions(deck_id))
+                expected_q=_expected_questions(deck_id), deck_sources=deck_sources,
+                legacy_source=legacy_source)
 
 
 @app.get("/decks/{deck_id}/job-status", response_class=HTMLResponse)
@@ -1020,6 +1044,87 @@ async def regen_question(request: Request, qid: int):
     ok = regenerate_single_question(user["id"], q["deck_id"], qid)
     return RedirectResponse(
         f"/decks/{q['deck_id']}/questions?" + ("regen=1" if ok else "regen=0"), status_code=303)
+
+
+@app.post("/decks/{deck_id}/sources/{source_id}/remove")
+async def remove_source(request: Request, deck_id: int, source_id: int):
+    """Detach one source from a deck: its questions go with it (chunk_id belongs
+    to the source). Other sources and their questions stay intact."""
+    user = require_user(request)
+    deck = db.query_one("SELECT * FROM decks WHERE id = ? AND user_id = ?", (deck_id, user["id"]))
+    if not deck:
+        return RedirectResponse("/decks", status_code=303)
+    owned = db.query_one("SELECT 1 FROM deck_sources WHERE deck_id = ? AND source_id = ?",
+                         (deck_id, source_id))
+    if not owned:
+        return RedirectResponse(f"/decks/{deck_id}", status_code=303)
+    remaining = [r["source_id"] for r in db.query(
+        "SELECT source_id FROM deck_sources WHERE deck_id = ? AND source_id != ?",
+        (deck_id, source_id))]
+    if not remaining:
+        return RedirectResponse(f"/decks/{deck_id}?error=no_sources_left", status_code=303)
+    db.execute("DELETE FROM questions WHERE deck_id = ? AND chunk_id IN"
+               " (SELECT id FROM chunks WHERE source_id = ?)", (deck_id, source_id))
+    db.execute("DELETE FROM deck_sources WHERE deck_id = ? AND source_id = ?", (deck_id, source_id))
+    if deck["source_id"] == source_id:
+        db.execute("UPDATE decks SET source_id = ? WHERE id = ?", (remaining[0], deck_id))
+    return RedirectResponse(f"/decks/{deck_id}", status_code=303)
+
+
+@app.post("/decks/{deck_id}/add-material")
+async def add_material(request: Request, deck_id: int, urls: str = Form(""),
+                       files: list[UploadFile] = File([])):
+    """"Add material" on an existing deck: attach another file/link, then run a
+    mode=add job against ALL sources; new questions dedup against existing ones."""
+    user = require_user(request)
+    deck = db.query_one("SELECT * FROM decks WHERE id = ? AND user_id = ?", (deck_id, user["id"]))
+    if not deck:
+        return RedirectResponse("/decks", status_code=303)
+    url_list = [u.strip() for u in urls.splitlines() if u.strip()]
+    if not url_list:
+        form = await request.form()
+        single = (form.get("url") or "").strip()
+        if single:
+            url_list = [single]
+    files = [f for f in files if f and f.filename]
+    if not files and not url_list:
+        return RedirectResponse(f"/decks/{deck_id}?error=no_material", status_code=303)
+    try:
+        for f in files:
+            data = await f.read()
+            if len(data) > settings.max_upload_mb * 1024 * 1024:
+                raise IngestError("__err_file_too_big")
+            upload_dir = Path(settings.upload_dir)
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            safe_name = Path(f.filename).name
+            tmp = upload_dir / f"{secrets.token_hex(8)}_{safe_name}"
+            tmp.write_bytes(data)
+            try:
+                raw = extract_text_from_file(tmp, safe_name)
+            finally:
+                tmp.unlink(missing_ok=True)
+            if not raw.strip():
+                raise IngestError("__err_no_text")
+            cur = db.execute(
+                "INSERT INTO sources(user_id, kind, title, original_ref, raw_text) VALUES (?, 'file', ?, ?, ?)",
+                (user["id"], safe_name, safe_name, raw))
+            sid = cur.lastrowid
+            db.execute("INSERT OR IGNORE INTO deck_sources(deck_id, source_id) VALUES (?, ?)",
+                       (deck_id, sid))
+            for idx, piece in enumerate(chunk_text_v2(raw)):
+                db.execute("INSERT INTO chunks(source_id, idx, text) VALUES (?, ?, ?)", (sid, idx, piece))
+        for u in url_list:
+            cur = db.execute(
+                "INSERT INTO sources(user_id, kind, title, original_ref, raw_text) VALUES (?, 'url', ?, ?, '')",
+                (user["id"], u, u))
+            sid = cur.lastrowid
+            db.execute("INSERT OR IGNORE INTO deck_sources(deck_id, source_id) VALUES (?, ?)",
+                       (deck_id, sid))
+    except IngestError:
+        return RedirectResponse(f"/decks/{deck_id}?error=err_generic", status_code=303)
+    db.execute("UPDATE decks SET status='draft' WHERE id = ?", (deck_id,))
+    job_id = start_generation(user["id"], deck_id, mode="add")
+    return RedirectResponse(f"/decks/{deck_id}?job={job_id}", status_code=303)
 
 
 @app.post("/decks/{deck_id}/regen")

@@ -75,11 +75,22 @@ CREATE TABLE IF NOT EXISTS chunks (
 CREATE TABLE IF NOT EXISTS decks (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    source_id  INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    -- nullable for new multi-source decks; set to the first material after insert.
+    -- legacy 1:1 and pack decks always have it. deck_sources is the full list.
+    source_id  INTEGER REFERENCES sources(id) ON DELETE CASCADE,
     title      TEXT NOT NULL,
     lang       TEXT NOT NULL DEFAULT 'en',
     status     TEXT NOT NULL DEFAULT 'draft',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Many-to-many deck<->source: a deck can combine files and links.
+-- decks.source_id stays as the legacy/primary source (pack decks rely on it);
+-- deck_sources lists ALL material attached to the deck.
+CREATE TABLE IF NOT EXISTS deck_sources (
+    deck_id   INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+    source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    PRIMARY KEY (deck_id, source_id)
 );
 
 CREATE TABLE IF NOT EXISTS jobs (
@@ -147,6 +158,8 @@ CREATE TABLE IF NOT EXISTS user_badges (
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source_id);
+CREATE INDEX IF NOT EXISTS idx_deck_sources_deck ON deck_sources(deck_id);
+CREATE INDEX IF NOT EXISTS idx_deck_sources_source ON deck_sources(source_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_deck ON jobs(deck_id);
 CREATE INDEX IF NOT EXISTS idx_questions_deck ON questions(deck_id);
 CREATE INDEX IF NOT EXISTS idx_questions_due ON questions(deck_id, due_at);

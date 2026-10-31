@@ -71,6 +71,19 @@ DEFAULT_TARGET = 50
 MAX_QUESTIONS_PER_CHUNK = 6   # hard cap per single LLM call per chunk
 MAX_PASSES_PER_CHUNK = 3      # extra passes on small sources, different aspects
 
+# Crawl budget derived from the deck target: we want roughly this much clean
+# material per target question, and a crawled page yields roughly WORDS_PER_PAGE
+# words. max_pages = clamp(ceil(target * WORDS_PER_QUESTION / WORDS_PER_PAGE),
+#                          1, settings.crawl_max_pages).
+WORDS_PER_QUESTION = 110
+WORDS_PER_PAGE = 800
+
+
+def crawl_pages_for_target(target_questions: int) -> int:
+    import math
+    budget = math.ceil(target_questions * WORDS_PER_QUESTION / WORDS_PER_PAGE)
+    return max(1, min(settings.crawl_max_pages, budget))
+
 
 settings = Settings()
 

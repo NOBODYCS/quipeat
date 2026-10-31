@@ -1,3 +1,4 @@
+import io
 import os
 import sys
 import tempfile
@@ -50,8 +51,8 @@ def test_register_login_and_full_flow():
     r = client.get("/decks")
     assert r.status_code == 200 and "Your decks" in r.text
 
-    r = csrf_post(client, "/new", data={"title": "Bio", "goal": "Understand photosynthesis basics", "topic_text": "Photosynthesis converts light into glucose. " * 60},
-                    follow_redirects=False)
+    r = csrf_post(client, "/new", data={"title": "Bio", "goal": "Understand photosynthesis basics"},
+                    follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("Photosynthesis converts light into glucose. " * 60).encode()), "text/plain")})
     assert r.status_code == 303, r.text[:500]
     deck_id = int(r.headers["location"].split("created=")[1])
 
@@ -164,8 +165,8 @@ def test_url_crawl_concatenates_pages(monkeypatch):
 
 
 def test_new_source_saves_level():
-    r = csrf_post(client, "/new", data={"title": "Lv", "goal": "Learn Kubernetes orchestration", "topic_text": "Kubernetes orchestrates containers. " * 60,
-                                  "level": "thorough"}, follow_redirects=False)
+    r = csrf_post(client, "/new", data={"title": "Lv", "goal": "Learn Kubernetes orchestration",
+                                  "level": "thorough"}, follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("Kubernetes orchestrates containers. " * 60).encode()), "text/plain")})
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
     deck = db.query_one("SELECT * FROM decks WHERE id = ?", (deck_id,))
@@ -191,7 +192,7 @@ def test_url_source_crawls_in_background(monkeypatch):
 
     monkeypatch.setattr(ingest, "_fetch", fake_fetch)
 
-    r = csrf_post(client, "/new", data={"title": "Url", "goal": "Learn background crawling", "url": "https://example.com/",
+    r = csrf_post(client, "/new", data={"title": "Url", "goal": "Learn background crawling", "urls": "https://example.com/",
                                   "level": "standard"}, follow_redirects=False)
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
@@ -221,7 +222,7 @@ def test_url_source_challenge_fails_job(monkeypatch):
 
     monkeypatch.setattr(ingest, "_fetch", fake_fetch)
 
-    r = csrf_post(client, "/new", data={"title": "Blk", "goal": "Learn blocked pages handling", "url": "https://example.com/",
+    r = csrf_post(client, "/new", data={"title": "Blk", "goal": "Learn blocked pages handling", "urls": "https://example.com/",
                                   "level": "standard"}, follow_redirects=False)
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
@@ -311,9 +312,8 @@ def test_generation_prompt_is_topic_aware():
     orig = generation._get_provider
     generation._get_provider = lambda user_id: (SpyProvider(), "mock-model")
     try:
-        r = csrf_post(client, "/new", data={"title": "Ansible fundamentals", "goal": "Run Ansible playbooks",
-                                      "topic_text": "Ansible playbooks run tasks in order. " * 60},
-                        follow_redirects=False)
+        r = csrf_post(client, "/new", data={"title": "Ansible fundamentals", "goal": "Run Ansible playbooks"},
+                        follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("Ansible playbooks run tasks in order. " * 60).encode()), "text/plain")})
         assert r.status_code == 303
         deck_id = int(r.headers["location"].split("created=")[1])
         job = None
@@ -354,8 +354,8 @@ def test_triaged_sampling_end_to_end():
               "License: GPLv3. Changelog for release 2.15: minor fixes. ") * 20
 
     big_text = (relevant + " " + filler) * 40
-    r = csrf_post(client, "/new", data={"title": "Ansible", "goal": "Use Ansible for automation", "topic_text": big_text,
-                                  "level": "quick"}, follow_redirects=False)
+    r = csrf_post(client, "/new", data={"title": "Ansible", "goal": "Use Ansible for automation",
+                                  "level": "quick"}, follow_redirects=False, files={"files": ("notes.txt", io.BytesIO((big_text).encode()), "text/plain")})
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
 
@@ -560,8 +560,8 @@ def test_semantic_triage_drops_non_learning_chunks(monkeypatch):
     mixed = ("Ansible playbooks define tasks in YAML against an inventory. "
              "To contribute a new module, open a pull request following the contributor "
              "path and changelog fragment process. ") * 40
-    r = csrf_post(client, "/new", data={"title": "Ansible", "goal": "Use Ansible playbooks", "topic_text": mixed,
-                                  "level": "quick"}, follow_redirects=False)
+    r = csrf_post(client, "/new", data={"title": "Ansible", "goal": "Use Ansible playbooks",
+                                  "level": "quick"}, follow_redirects=False, files={"files": ("notes.txt", io.BytesIO((mixed).encode()), "text/plain")})
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
     job = None
@@ -582,14 +582,13 @@ def test_semantic_triage_drops_non_learning_chunks(monkeypatch):
 def test_goal_is_required_and_persisted():
     client.post("/register", data={"email": "goal1@b.c", "password": "password123",
                                    "display_name": "G1"}, follow_redirects=False)
-    r = csrf_post(client, "/new", data={"title": "NoGoal", "topic_text": "Some content. " * 60},
-                    follow_redirects=False)
+    r = csrf_post(client, "/new", data={"title": "NoGoal"},
+                    follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("Some content. " * 60).encode()), "text/plain")})
     assert r.status_code == 200
     assert "what you want to learn" in r.text.lower()
 
-    r = csrf_post(client, "/new", data={"title": "WithGoal", "goal": "Master inventory basics",
-                                  "topic_text": "Ansible inventory hosts and groups. " * 60},
-                    follow_redirects=False)
+    r = csrf_post(client, "/new", data={"title": "WithGoal", "goal": "Master inventory basics"},
+                    follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("Ansible inventory hosts and groups. " * 60).encode()), "text/plain")})
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
     deck = db.query_one("SELECT goal FROM decks WHERE id = ?", (deck_id,))
@@ -625,9 +624,8 @@ def test_triage_prompt_is_sent_to_lld(monkeypatch):
     try:
         client.post("/register", data={"email": "triage@b.c", "password": "password123",
                                        "display_name": "T"}, follow_redirects=False)
-        r = csrf_post(client, "/new", data={"title": "T", "goal": "Use Ansible playbooks",
-                                      "topic_text": "Ansible playbooks run tasks. " * 400},
-                        follow_redirects=False)
+        r = csrf_post(client, "/new", data={"title": "T", "goal": "Use Ansible playbooks"},
+                        follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("Ansible playbooks run tasks. " * 400).encode()), "text/plain")})
         assert r.status_code == 303
         deck_id = int(r.headers["location"].split("created=")[1])
         for _ in range(50):
@@ -649,9 +647,8 @@ def test_admin_panel_shows_diagnostics_and_job_events():
                                    "display_name": "AT"}, follow_redirects=False)
     db.execute("UPDATE users SET role='admin' WHERE email='admintest@b.c'")
 
-    r = csrf_post(client, "/new", data={"title": "Obs", "goal": "Learn observability",
-                                  "topic_text": "Observability needs logs metrics traces. " * 60},
-                    follow_redirects=False)
+    r = csrf_post(client, "/new", data={"title": "Obs", "goal": "Learn observability"},
+                    follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("Observability needs logs metrics traces. " * 60).encode()), "text/plain")})
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
     job = None
@@ -691,16 +688,15 @@ def test_file_upload_and_topic_decks_generate():
     client.post("/register", data={"email": "srctest@b.c", "password": "password123",
                                    "display_name": "ST"}, follow_redirects=False)
 
-    files = {"file": ("notes.txt", io.BytesIO(
+    files = {"files": ("notes.txt", io.BytesIO(
         b"Ansible playbooks automate server configuration with YAML tasks. " * 60), "text/plain")}
     r = csrf_post(client, "/new", data={"title": "FileDeck", "goal": "Learn file ingestion",
                                    "level": "quick"}, files=files, follow_redirects=False)
     assert r.status_code == 303, r.text[:300]
     file_deck = int(r.headers["location"].split("created=")[1])
 
-    r = csrf_post(client, "/new", data={"title": "TopicDeck", "goal": "Learn topic ingestion",
-                                  "topic_text": "Kubernetes pods are scheduled onto nodes. " * 80},
-                    follow_redirects=False)
+    r = csrf_post(client, "/new", data={"title": "TopicDeck", "goal": "Learn topic ingestion"},
+                    follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("Kubernetes pods are scheduled onto nodes. " * 80).encode()), "text/plain")})
     assert r.status_code == 303, r.text[:300]
     topic_deck = int(r.headers["location"].split("created=")[1])
 
@@ -730,9 +726,8 @@ def test_job_events_pruned_and_regenerate_text_deck():
     client.post("/register", data={"email": "prune@b.c", "password": "password123",
                                    "display_name": "P"}, follow_redirects=False)
 
-    r = csrf_post(client, "/new", data={"title": "Prune", "goal": "Learn pruning",
-                                  "topic_text": "Pruning keeps storage bounded over time. " * 60},
-                    follow_redirects=False)
+    r = csrf_post(client, "/new", data={"title": "Prune", "goal": "Learn pruning"},
+                    follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("Pruning keeps storage bounded over time. " * 60).encode()), "text/plain")})
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
     job = None
@@ -782,9 +777,8 @@ def test_restart_recovery_and_bounded_concurrency():
 
     client.post("/register", data={"email": "recover@b.c", "password": "password123",
                                    "display_name": "RV"}, follow_redirects=False)
-    r = csrf_post(client, "/new", data={"title": "Stuck", "goal": "Learn recovery",
-                                  "topic_text": "Recovery handles interrupted jobs. " * 60},
-                    follow_redirects=False)
+    r = csrf_post(client, "/new", data={"title": "Stuck", "goal": "Learn recovery"},
+                    follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("Recovery handles interrupted jobs. " * 60).encode()), "text/plain")})
     assert r.status_code == 303
     deck_id = int(r.headers["location"].split("created=")[1])
 
@@ -836,8 +830,8 @@ def _register_and_deck(email, title="Sec deck"):
     r = c.post("/register", data={"email": email, "password": "password123",
                                    "display_name": email.split("@")[0]}, follow_redirects=False)
     assert r.status_code == 303
-    r = csrf_post(c, "/new", data={"title": title, "goal": "goal", "topic_text": "Mitochondria produce ATP. " * 60},
-               follow_redirects=False)
+    r = csrf_post(c, "/new", data={"title": title, "goal": "goal"},
+               follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("Mitochondria produce ATP. " * 60).encode()), "text/plain")})
     assert r.status_code == 303, r.text[:300]
     deck_id = int(r.headers["location"].split("created=")[1])
     import time
@@ -929,7 +923,7 @@ def test_upload_filename_path_traversal_sanitized():
     c, _, _ = _register_and_deck("up@example.com")
     evil = b"hello traversal"
     r = csrf_post(c, "/new", data={"title": "T", "goal": "g"},
-               files={"file": ("../../../tmp/evil_quipeat.txt", evil, "text/plain")},
+               files={"files": ("../../../tmp/evil_quipeat.txt", evil, "text/plain")},
                follow_redirects=False)
     assert r.status_code == 303, r.text[:300]
     import os
@@ -1128,8 +1122,8 @@ def test_target_size_drives_count_and_shortfall_reported():
     c = TestClient(app)
     c.post("/register", data={"email": "tgt@example.com", "password": "password123"}, follow_redirects=False)
     # tiny source, target 200 -> cannot be reached; shortfall message must say why
-    r = csrf_post(c, "/new", data={"title": "Tiny", "goal": "g", "topic_text": "One short fact here. " * 5,
-                                   "target": "200"}, follow_redirects=False)
+    r = csrf_post(c, "/new", data={"title": "Tiny", "goal": "g",
+                                   "target": "200"}, follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("One short fact here. " * 5).encode()), "text/plain")})
     assert r.status_code == 303, r.text[:300]
     deck_id = int(r.headers["location"].split("created=")[1])
     deck = db.query_one("SELECT target_questions FROM decks WHERE id=?", (deck_id,))
@@ -1146,8 +1140,8 @@ def test_target_size_drives_count_and_shortfall_reported():
     if n < 200:
         assert "Shortfall" in job["message"] or "target" in job["message"].lower(), job["message"]
     # target 20 on a normal source: count should be <= 20 and > 0
-    r = csrf_post(c, "/new", data={"title": "Small", "goal": "g", "topic_text": "Mitochondria produce ATP. " * 60,
-                                   "target": "20"}, follow_redirects=False)
+    r = csrf_post(c, "/new", data={"title": "Small", "goal": "g",
+                                   "target": "20"}, follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("Mitochondria produce ATP. " * 60).encode()), "text/plain")})
     deck2 = int(r.headers["location"].split("created=")[1])
     for _ in range(120):
         job = db.query_one("SELECT * FROM jobs WHERE deck_id=? ORDER BY rowid DESC LIMIT 1", (deck2,))
@@ -1156,22 +1150,31 @@ def test_target_size_drives_count_and_shortfall_reported():
     n2 = db.query_one("SELECT COUNT(*) c FROM questions WHERE deck_id=?", (deck2,))["c"]
     assert 0 < n2 <= 20, n2
     # invalid target falls back to default
-    r = csrf_post(c, "/new", data={"title": "Bad", "goal": "g", "topic_text": "x " * 100, "target": "999"},
-                  follow_redirects=False)
+    r = csrf_post(c, "/new", data={"title": "Bad", "goal": "g", "target": "999"},
+                  follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("x " * 100).encode()), "text/plain")})
     deck3 = int(r.headers["location"].split("created=")[1])
     assert db.query_one("SELECT target_questions FROM decks WHERE id=?", (deck3,))["target_questions"] == 50
 
 
 def test_topic_mode_research_doc_then_questions():
-    """P1-8/F4: bare topic -> kind='topic' source with generated research text,
-    normal pipeline runs on it, count driven by target, deck page discloses."""
+    """Legacy topic pipeline (kept for packs / build_pack.py): a kind='topic'
+    source gets a generated research doc, normal pipeline runs on it, and the
+    deck page discloses generated-research grounding. /new itself no longer
+    offers topic mode."""
+    from app.generation import generate_deck_questions
     c = TestClient(app)
     c.post("/register", data={"email": "topic@example.com", "password": "password123"}, follow_redirects=False)
-    r = csrf_post(c, "/new", data={"title": "Quantum computing", "goal": "Understand qubits",
-                                   "topic_text": "Quantum computing", "source_mode": "topic",
-                                   "target": "20"}, follow_redirects=False)
-    assert r.status_code == 303, r.text[:300]
-    deck_id = int(r.headers["location"].split("created=")[1])
+    user_id = db.query_one("SELECT id FROM users WHERE email='topic@example.com'")["id"]
+    cur = db.execute("INSERT INTO sources(user_id, kind, title, original_ref, raw_text) VALUES (?, 'topic', 'Quantum computing', 'Quantum computing', '')",
+                     (user_id,))
+    source_id = cur.lastrowid
+    cur = db.execute("INSERT INTO decks(user_id, source_id, title, goal, lang, level, target_questions, status)"
+                     " VALUES (?, ?, 'Quantum computing', 'Understand qubits', 'en', 'standard', 20, 'draft')",
+                     (user_id, source_id))
+    deck_id = cur.lastrowid
+    job_id = "topic-test-1"
+    db.execute("INSERT INTO jobs(id, user_id, deck_id) VALUES (?, ?, ?)", (job_id, user_id, deck_id))
+    generate_deck_questions(user_id, deck_id, job_id)
     src = db.query_one("SELECT kind FROM sources s JOIN decks d ON d.source_id=s.id WHERE d.id=?", (deck_id,))
     assert src["kind"] == "topic"
     import time
@@ -1386,7 +1389,7 @@ def test_deck_inspect_view():
     # empty state: deck with no questions
     c2 = TestClient(app)
     c2.post("/register", data={"email": "inspect2@example.com", "password": "password123"}, follow_redirects=False)
-    r = csrf_post(c2, "/new", data={"title": "E", "goal": "g", "topic_text": "x " * 5}, follow_redirects=False)
+    r = csrf_post(c2, "/new", data={"title": "E", "goal": "g"}, follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("x " * 5).encode()), "text/plain")})
     deck2 = int(r.headers["location"].split("created=")[1])
     # delete all questions to force empty
     db.execute("DELETE FROM questions WHERE deck_id=?", (deck2,))
@@ -1442,7 +1445,7 @@ def test_deck_level_thresholds():
     # deck with zero questions: New, no error
     c = TestClient(app)
     c.post("/register", data={"email": "lvl@example.com", "password": "password123"}, follow_redirects=False)
-    r = csrf_post(c, "/new", data={"title": "E", "goal": "g", "topic_text": "x " * 5}, follow_redirects=False)
+    r = csrf_post(c, "/new", data={"title": "E", "goal": "g"}, follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("x " * 5).encode()), "text/plain")})
     deck_id = int(r.headers["location"].split("created=")[1])
     db.execute("DELETE FROM questions WHERE deck_id=?", (deck_id,))
     from app.mastery import deck_mastery
@@ -1893,8 +1896,7 @@ def test_multipass_runs_per_pass_and_exceeds_single_pass_ceiling():
            follow_redirects=False)
     # one tiny source -> 1 chunk; target 200 > 1 * 6 -> multi-pass must engage
     r = csrf_post(c, "/new", data={"title": "Passes", "goal": "g",
-                                   "topic_text": "Mitochondria produce ATP. " * 30,
-                                   "target": "200"}, follow_redirects=False)
+                                   "target": "200"}, follow_redirects=False, files={"files": ("notes.txt", io.BytesIO(("Mitochondria produce ATP. " * 30).encode()), "text/plain")})
     assert r.status_code == 303, r.text[:300]
     deck_id = int(r.headers["location"].split("created=")[1])
     for _ in range(200):
@@ -1939,3 +1941,144 @@ def test_multipass_runs_per_pass_and_exceeds_single_pass_ceiling():
     msg = job["message"]
     if n < 200:
         assert "Shortfall" in msg or "target" in msg.lower(), msg
+
+
+def _wait_job(deck_id, tries=200):
+    import time
+    for _ in range(tries):
+        job = db.query_one("SELECT * FROM jobs WHERE deck_id=? ORDER BY rowid DESC LIMIT 1", (deck_id,))
+        if job and job["status"] in ("done", "failed"):
+            return job
+        time.sleep(0.25)
+    return job
+
+
+def test_new_requires_material_and_supports_multi_source():
+    """P1-4/P2: /new refuses creation without material; one file + two links attach
+    three sources to one deck and generation reads all of them."""
+    from app import ingest
+    c = TestClient(app)
+    c.post("/register", data={"email": "multi@example.com", "password": "password123"}, follow_redirects=False)
+    # no material -> refused with clear message, no deck created
+    r = csrf_post(c, "/new", data={"title": "Empty", "goal": "learn x"}, follow_redirects=False)
+    assert r.status_code == 200 and "file or link" in r.text.lower()
+    assert db.query_one("SELECT COUNT(*) c FROM decks d JOIN users u ON u.id=d.user_id"
+                        " WHERE u.email='multi@example.com'")["c"] == 0
+    # 1 file + 2 links
+    monkeypatch_fetch = {}
+    import app.generation as gen
+    def fake_extract(url, max_pages=1):
+        text = f"Material from {url}. " + "Unique content about ansible playbooks and inventories. " * 40
+        monkeypatch_fetch[url] = max_pages
+        return text
+    orig_ingest = ingest.extract_text_from_url
+    ingest.extract_text_from_url = fake_extract
+    r = csrf_post(c, "/new",
+                  data={"title": "Multi", "goal": "write ansible playbooks",
+                        "urls": "https://docs.ansible.com/a\nhttps://docs.ansible.com/b",
+                        "target": "20"},
+                  files={"files": ("notes.txt", io.BytesIO(b"Ansible notes about playbooks and tasks. " * 40), "text/plain")},
+                  follow_redirects=False)
+    assert r.status_code == 303, r.text[:300]
+    deck_id = int(r.headers["location"].split("created=")[1])
+    sids = db.query("SELECT source_id FROM deck_sources WHERE deck_id=?", (deck_id,))
+    assert len(sids) == 3
+    kinds = {r["kind"] for r in db.query("SELECT kind FROM sources WHERE id IN (%s)" % ",".join("?" * len(sids)),
+                                          tuple(s["source_id"] for s in sids))}
+    assert kinds == {"file", "url"}
+    try:
+        job = _wait_job(deck_id)
+        assert job["status"] == "done", job["error"]
+        n = db.query_one("SELECT COUNT(*) c FROM questions WHERE deck_id=?", (deck_id,))["c"]
+        assert n > 0
+    finally:
+        ingest.extract_text_from_url = orig_ingest
+    # chunks came from all three sources
+    srcs_with_chunks = db.query_one(
+        "SELECT COUNT(DISTINCT source_id) c FROM chunks WHERE source_id IN (%s)"
+        % ",".join("?" * len(sids)), tuple(s["source_id"] for s in sids))["c"]
+    assert srcs_with_chunks == 3
+
+
+def test_crawl_budget_scales_with_target_and_respects_cap():
+    """P1-7: target 200 crawls more pages than target 20; both capped at
+    settings.crawl_max_pages."""
+    from app.config import crawl_pages_for_target, settings
+    p20 = crawl_pages_for_target(20)
+    p200 = crawl_pages_for_target(200)
+    assert p200 > p20
+    assert p20 >= 1 and p200 <= settings.crawl_max_pages
+    assert crawl_pages_for_target(10000) == settings.crawl_max_pages
+
+
+def test_deck_sources_migration_backfills_and_is_idempotent():
+    """P2-9: deck_sources backfills existing 1:1 decks; re-running init_db is a no-op."""
+    db.init_db()
+    db.init_db()
+    rows = db.query("SELECT deck_id, source_id FROM deck_sources")
+    decks = db.query("SELECT id, source_id FROM decks WHERE source_id IS NOT NULL")
+    assert len(rows) >= len(decks)
+    for d in decks:
+        assert any(r["deck_id"] == d["id"] and r["source_id"] == d["source_id"] for r in rows)
+
+
+def test_remove_source_keeps_rest_of_deck():
+    """P2-12: removing one source deletes only its questions; other sources intact."""
+    c = TestClient(app)
+    c.post("/register", data={"email": "rmsrc@example.com", "password": "password123"}, follow_redirects=False)
+    r = csrf_post(c, "/new", data={"title": "Two", "goal": "g", "target": "20"},
+                  files=[("files", ("a.txt", io.BytesIO(b"Alpha material about zebras and habitats. " * 40), "text/plain")),
+                         ("files", ("b.txt", io.BytesIO(b"Beta material about rockets and orbits. " * 40), "text/plain"))],
+                  follow_redirects=False)
+    assert r.status_code == 303, r.text[:300]
+    deck_id = int(r.headers["location"].split("created=")[1])
+    job = _wait_job(deck_id)
+    assert job["status"] == "done", job["error"]
+    sids = [s["source_id"] for s in db.query("SELECT source_id FROM deck_sources WHERE deck_id=?", (deck_id,))]
+    assert len(sids) == 2
+    before = db.query_one("SELECT COUNT(*) c FROM questions WHERE deck_id=?", (deck_id,))["c"]
+    assert before > 0
+    victim = sids[0]
+    r = csrf_post(c, f"/decks/{deck_id}/sources/{victim}/remove", data={}, follow_redirects=False)
+    assert r.status_code == 303
+    assert db.query_one("SELECT COUNT(*) c FROM deck_sources WHERE deck_id=?", (deck_id,))["c"] == 1
+    after = db.query_one("SELECT COUNT(*) c FROM questions WHERE deck_id=?", (deck_id,))["c"]
+    victim_qs = db.query_one("SELECT COUNT(*) c FROM questions WHERE deck_id=? AND chunk_id IN"
+                             " (SELECT id FROM chunks WHERE source_id=?)", (deck_id, victim))["c"]
+    assert victim_qs == 0
+    assert after < before or after == before  # victim's questions removed; rest intact
+    remaining_src = db.query_one("SELECT source_id FROM deck_sources WHERE deck_id=?", (deck_id,))["source_id"]
+    assert remaining_src == sids[1]
+
+
+def test_add_material_dedups_against_existing():
+    """P2-12: 'Add material' on a ready deck attaches a source and runs mode=add;
+    no new question duplicates an existing normalized prompt/option set."""
+    from app.generation import _similarity_norm, _option_set_key
+    c = TestClient(app)
+    c.post("/register", data={"email": "addmat@example.com", "password": "password123"}, follow_redirects=False)
+    r = csrf_post(c, "/new", data={"title": "Base", "goal": "g", "target": "20"},
+                  files={"files": ("notes.txt", io.BytesIO(b"Ansible playbooks run tasks in order on hosts. " * 40), "text/plain")},
+                  follow_redirects=False)
+    assert r.status_code == 303
+    deck_id = int(r.headers["location"].split("created=")[1])
+    job = _wait_job(deck_id)
+    assert job["status"] == "done", job["error"]
+    before = db.query("SELECT prompt, options_json FROM questions WHERE deck_id=?", (deck_id,))
+    assert before
+    r = csrf_post(c, f"/decks/{deck_id}/add-material", data={},
+                  files={"files": ("more.txt", io.BytesIO(b"Ansible inventories list hosts and groups in YAML. " * 40), "text/plain")},
+                  follow_redirects=False)
+    assert r.status_code == 303
+    job2 = _wait_job(deck_id)
+    assert job2["status"] == "done", job2["error"]
+    assert job2["mode"] == "add"
+    after = db.query("SELECT prompt, options_json FROM questions WHERE deck_id=?", (deck_id,))
+    assert len(after) >= len(before)
+    # no cross-run duplicates above threshold
+    prompts = [q["prompt"] for q in after]
+    for i in range(len(prompts)):
+        for j in range(i + 1, len(prompts)):
+            assert _similarity_norm(prompts[i], prompts[j]) <= 0.8
+    keys = [_option_set_key(__import__("json").loads(q["options_json"])) for q in after]
+    assert len(keys) == len(set(keys))
