@@ -3,6 +3,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 _tmp = tempfile.mkdtemp()
@@ -461,6 +463,86 @@ def test_provider_retries_transient_errors(monkeypatch):
     result = p.chat("m", "sys", "user", json_schema={"type": "object"})
     assert calls["n"] == 3
     assert result.text == "{}"
+
+
+def _retry_resp(status, retry_after=None):
+    class Resp:
+        def __init__(self):
+            self.status_code = status
+            self.text = ""
+            self.headers = {"retry-after": retry_after} if retry_after else {}
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                import httpx
+                raise httpx.HTTPStatusError("err", request=None, response=self)
+
+        def json(self):
+            return {"choices": [{"message": {"content": "{}"}}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+    return Resp()
+
+
+def _patched_client(monkeypatch, seq):
+    """Patch providers.httpx.Client so .post returns responses from seq in order."""
+    from app.llm import providers
+    calls = {"n": 0}
+    sleeps = []
+
+    def fake_post(**kw):
+        calls["n"] += 1
+        item = seq[calls["n"] - 1] if calls["n"] <= len(seq) else seq[-1]
+        status, ra = item if isinstance(item, tuple) else (item, None)
+        return _retry_resp(status, ra)
+
+    monkeypatch.setattr(providers.time, "sleep", lambda s: sleeps.append(s))
+
+    class FakeClient:
+        def __init__(self, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def post(self, url, **kw):
+            return fake_post(**kw)
+
+    monkeypatch.setattr(providers.httpx, "Client", FakeClient)
+    return calls, sleeps
+
+
+def test_provider_survives_long_429_503_streak(monkeypatch):
+    """A 429,429,503,... burst that used to kill the research step after 3
+    attempts must now be retried up to MAX_RETRIES and succeed."""
+    from app.llm import providers
+    calls, sleeps = _patched_client(monkeypatch, [429, 429, 503, 429, 503, 200])
+    p = providers.MistralProvider("test-key")
+    result = p.chat("m", "sys", "user", json_schema={"type": "object"})
+    assert calls["n"] == 6
+    assert result.text == "{}"
+    assert len(sleeps) == 5  # no sleep after the final successful attempt
+
+
+def test_provider_gives_up_after_max_retries(monkeypatch):
+    from app.llm import providers
+    calls, sleeps = _patched_client(monkeypatch, [429] * 50)
+    p = providers.MistralProvider("test-key")
+    with pytest.raises(providers.ProviderError):
+        p.chat("m", "sys", "user", json_schema={"type": "object"})
+    assert calls["n"] == providers.MAX_RETRIES
+
+
+def test_provider_honors_capped_retry_after(monkeypatch):
+    from app.llm import providers
+    calls, sleeps = _patched_client(monkeypatch, [(429, "5"), (503, "9999"), 200])
+    p = providers.MistralProvider("test-key")
+    p.chat("m", "sys", "user", json_schema={"type": "object"})
+    assert calls["n"] == 3
+    assert sleeps[0] == 5.0
+    assert sleeps[1] == providers.RETRY_AFTER_CAP_S  # 9999s request capped
 
 
 def test_semantic_triage_drops_non_learning_chunks(monkeypatch):

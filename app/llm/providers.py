@@ -1,4 +1,5 @@
 import logging
+import random
 import time
 from dataclasses import dataclass
 
@@ -7,7 +8,9 @@ import httpx
 log = logging.getLogger("quipeat.llm")
 
 RETRYABLE_STATUS = {429, 502, 503, 504}
-MAX_RETRIES = 3
+MAX_RETRIES = 6
+MAX_BACKOFF_S = 30.0
+RETRY_AFTER_CAP_S = 60.0
 
 
 @dataclass
@@ -22,6 +25,18 @@ class ProviderError(Exception):
     pass
 
 
+def _retry_wait(resp, attempt: int) -> float:
+    """Backoff for a transient response: honor Retry-After when present
+    (capped), else exponential backoff with jitter, also capped."""
+    ra = resp.headers.get("retry-after") if getattr(resp, "headers", None) else None
+    if ra:
+        try:
+            return min(float(ra), RETRY_AFTER_CAP_S)
+        except (TypeError, ValueError):
+            pass
+    return min(2 ** attempt * (1.0 + random.random() * 0.5), MAX_BACKOFF_S)
+
+
 def _post_with_retry(post_fn):
     """Run post_fn() retrying on transient provider errors (429/5xx) with
     exponential backoff. post_fn returns an httpx.Response."""
@@ -31,8 +46,8 @@ def _post_with_retry(post_fn):
         if resp.status_code not in RETRYABLE_STATUS:
             return resp
         last = resp
-        wait = 2 ** attempt
-        log.warning("provider returned %s (attempt %s/%s), retrying in %ss",
+        wait = _retry_wait(resp, attempt)
+        log.warning("provider returned %s (attempt %s/%s), retrying in %.1fs",
                     resp.status_code, attempt + 1, MAX_RETRIES, wait)
         time.sleep(wait)
     return last
